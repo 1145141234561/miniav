@@ -9,10 +9,48 @@
       "027cc450ef5f8c5f653329641ec1fed91f694e0d229928963b30f6b0d7d3a345": {
         "name": "NotPetya.Payload.Sha256",
         "level": "high"
+      },
+      "49326e17bb648929e7d8ecf3b0accc195e04c18f7ee59e27e24d865c6ea9f7a9": {
+        "name": "SilverFox-KbOut-Dropper",
+        "level": "high"
+      },
+      "20f6d52d0194aa2e28e1e44f529e6d93c2ac2c23e650115d6479d67150861875": {
+        "name": "SilverFox-SafeCenter-Loader",
+        "level": "high"
+      },
+      "8256f182081d88ce8c87799c0293bdf7dd982d269d9dff2bb8ccc31826583605": {
+        "name": "SilverFox-Abused-AweSun",
+        "level": "high"
       }
     },
-    "md5": {},
-    "sha1": {}
+    "md5": {
+      "37cc622ca7d83f8d2c9b66fecfef8af8": {
+        "name": "SilverFox-KbOut-Dropper",
+        "level": "high"
+      },
+      "683417610114c0406b32b21d70c05a33": {
+        "name": "SilverFox-SafeCenter-Loader",
+        "level": "high"
+      },
+      "63895df57079260a8f13a2918a35c867": {
+        "name": "SilverFox-Abused-AweSun",
+        "level": "high"
+      }
+    },
+    "sha1": {
+      "de3703cd7e3110adb28c391ae51ad0ec534bbbc4": {
+        "name": "SilverFox-KbOut-Dropper",
+        "level": "high"
+      },
+      "fcf3f12cb903f2ed8933dd6e7fcef13fd0706378": {
+        "name": "SilverFox-SafeCenter-Loader",
+        "level": "high"
+      },
+      "c5910fde92d95fb61e62991712434d1543d5d397": {
+        "name": "SilverFox-Abused-AweSun",
+        "level": "high"
+      }
+    }
   },
   "vulnerable_drivers": {},
   "patterns": [
@@ -34,5 +72,6 @@
     "*.yar",
     "*.yara"
   ],
-  "whitelist": {}
+  "whitelist": {},
+  "behaviors": {}
 }

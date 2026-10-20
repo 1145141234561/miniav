@@ -126,6 +126,9 @@ RULES = [
     ("SBX-Fox-Ghost",
      re.compile(r"(?i)(gh\s*0st|大灰狼|gh0st[_\s]{0,2}rat)"), 2,
      "Gh0st/大灰狼系远控家族特征串（银狐常用载荷）"),
+    ("SBX-Fox-AweSun",
+     re.compile(r"(?i)(C:\\AweSun|AweSun\.exe|SafeCenterController)"), 2,
+     "银狐：向日葵远控（AweSun）被滥用通道 / SafeCenter 控制器组件"),
 ]
 
 # 行为组合加分：单一特征危害有限，组合出现时危害倍增

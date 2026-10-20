@@ -494,9 +494,16 @@ def scan_file(path, db, ctx=None):
                          "level": "high",
                          "detail": "命中漏洞/恶意驱动黑名单（BYOVD 滥用风险）"})
     try:
-        if path.stat().st_size > MAX_CONTENT_SCAN:
-            return findings
-        data = path.read_bytes()
+        st_size = path.stat().st_size
+        if st_size <= MAX_CONTENT_SCAN:
+            data = path.read_bytes()
+        else:
+            # 大文件头尾分段读：头 64MB（PE 头/嵌入载荷/内嵌串）+
+            # 尾 8MB（PyInstaller/NSIS/Inno 的 TOC 与目录型 IOC 集中在尾部）
+            with open(path, "rb") as fh:
+                data = fh.read(MAX_CONTENT_SCAN)
+                fh.seek(-8 * 1024 * 1024, 2)
+                data += fh.read(8 * 1024 * 1024)
     except OSError:
         return findings
     findings += content_findings(data, db, ctx)

@@ -1011,6 +1011,55 @@ def run(db):
     except Exception as exc:
         check("银狐检测", False, f"异常: {exc}")
 
+    # 28) 银狐实战样本反制（kb_out 释放器 / SafeCenter 加载器 / AweSun 滥用）
+    try:
+        # 28a) PyInstaller 释放器探针：TOC 生成器标记 kb_out_ + 仿冒命名 W.P.S.
+        if HAS_YARA and rules:
+            p_kb = sample_dir / "kb_probe.bin"
+            p_kb.write_bytes(b"MZ" + b"\x90" * 58 + b"kb_out_" + b"W.P.S.50.513"
+                             + b"\x00" * 16)
+            fds_kb = scan_file(p_kb, db, ScanContext(rules_paths=rules))
+            check("银狐 YARA: kb_out 释放器检出",
+                  any(fd["name"] == "SilverFox_KbOut_Dropper" for fd in fds_kb),
+                  next((fd["name"] for fd in fds_kb
+                        if fd["name"].startswith("SilverFox")), ""))
+
+            # 28b) SafeCenter 加载器探针
+            p_sc = sample_dir / "sc_probe.bin"
+            p_sc.write_bytes(b"MZ" + b"\x90" * 46 + b"SafeCenterController"
+                             + b"\x00" * 16)
+            fds_sc = scan_file(p_sc, db, ScanContext(rules_paths=rules))
+            check("银狐 YARA: SafeCenter 加载器检出",
+                  any(fd["name"] == "SilverFox_SafeCenter" for fd in fds_sc),
+                  next((fd["name"] for fd in fds_sc
+                        if fd["name"].startswith("SilverFox")), ""))
+
+            # 28c) 正常 PyInstaller 仿造不误报（无生成器标记）
+            p_ok = sample_dir / "pyi_ok.bin"
+            p_ok.write_bytes(b"MZ" + b"\x90" * 52 + b"python38.dll"
+                             + b"base_library.zip" + b"\x00" * 16)
+            fds_ok = scan_file(p_ok, db, ScanContext(rules_paths=rules))
+            check("银狐规则: 正常 PyInstaller 程序不误报",
+                  not any(fd["name"].startswith("SilverFox") for fd in fds_ok),
+                  f"SilverFox 检出="
+                  f"{[fd['name'] for fd in fds_ok if fd['name'].startswith('SilverFox')]}")
+        else:
+            for nm in ("银狐 YARA: kb_out 释放器", "银狐 YARA: SafeCenter",
+                       "银狐规则: 正常 PyInstaller 不误报"):
+                check(nm, True, "（未安装 yara-python，跳过）")
+
+        # 28d) 向日葵远控滥用文本探针
+        p_aw = sample_dir / "awesun_probe.ps1"
+        p_aw.write_text("# fixture (never executed)\n"
+                        "Start-Process C:\\AweSun\\AweSun.exe\n",
+                        encoding="utf-8")
+        r_aw = sandbox.analyze(p_aw)
+        check("银狐行为: 向日葵远控滥用检出",
+              any(h["name"] == "SBX-Fox-AweSun" for h in r_aw["hits"]),
+              f"命中={[h['name'] for h in r_aw['hits'] if 'Fox' in h['name']]}")
+    except Exception as exc:
+        check("银狐实战反制", False, f"异常: {exc}")
+
     ok_all = all(results)
     print(f"\n[i] 自检{'全部通过' if ok_all else '存在失败项'}。")
     return 0 if ok_all else 1
