@@ -89,6 +89,28 @@ RULES = [
                 r"self-?signed.{0,24}(cert|exe|driver)|"
                 r"spoof.{0,12}(sign|cert))"), 2,
      "签名伪造/自签名伪装可信程序"),
+    # ---- 勒索病毒专项行为特征 ----
+    ("SBX-Ransom-Shadow",
+     re.compile(r"(?i)(vssadmin\s+delete\s+shadows|"
+                r"wmic\s+\S*shadowcopy\s+delete|"
+                r"bcdedit\s+/set\s+\S*recoveryenabled\s+no|"
+                r"wbadmin\s+delete\s+catalog|"
+                r"resize\s*[-_]?shadowstorage)"), 3,
+     "删除卷影副本/禁用系统恢复（勒索软件清障手法）"),
+    ("SBX-Ransom-Crypto",
+     re.compile(r"(?i)(\bb?cryptencrypt\b|\bcryptgenkey\b|\bcryptimportkey\b|"
+                r"\brsa(\.create|\]::create)\b|\baes(\.create|\]::create)\b|"
+                r"\bcreateencryptor\b)"), 2,
+     "文件加密原语调用（勒索加密准备）"),
+    ("SBX-Ransom-Note",
+     re.compile(r"(?i)(how_?to_?decrypt|how\s+to\s+decrypt|"
+                r"your\s+files\s+(have\s+been\s+|are\s+)?encrypted|"
+                r"read_?me_?to_?restore|restore_?files\.txt)"), 2,
+     "勒索信特征文本（恐吓/解密指引）"),
+    ("SBX-Ransom-ExtRename",
+     re.compile(r"(?i)\.(locked|encrypted|locky|crab|cerber|"
+                r"wallet|crypt|sage|oni)\b"), 1,
+     "勒索扩展名重命名痕迹（.locked/.locky/.crab 等）"),
 ]
 
 # 行为组合加分：单一特征危害有限，组合出现时危害倍增
@@ -108,6 +130,13 @@ COMBO_RULES = [
      "反沙箱探测 + 直接系统调用 = 高规避性免杀 Loader"),
     (frozenset({"SBX-Fake-Signature", "SBX-Memory-Exec"}), 2,
      "签名伪装 + 内存执行 = 伪装可信的免杀投递链"),
+    # ---- 勒索行为链组合 ----
+    (frozenset({"SBX-Ransom-Shadow", "SBX-Ransom-Crypto"}), 3,
+     "删除卷影副本 + 加密原语 = 勒索软件破坏加密链"),
+    (frozenset({"SBX-Ransom-Note", "SBX-Ransom-Crypto"}), 3,
+     "勒索信 + 加密原语 = 勒索软件赎金交付链"),
+    (frozenset({"SBX-Ransom-Shadow", "SBX-Ransom-Note"}), 2,
+     "删除卷影副本 + 勒索信 = 勒索软件标志组合"),
 ]
 
 # oletools 提取出的宏代码会与文件文本合并分析
@@ -196,3 +225,17 @@ def format_report(result):
     if not result["hits"]:
         lines.append("  未发现可疑行为特征")
     return "\n".join(lines)
+
+
+def match_families(db, observed_names):
+    """匹配已学习家族：库内行为集 ⊆ 当前观测行为名集 → [(family, meta)...]。
+
+    db["behaviors"] 由 autolearn 在样本判恶意后写入（按家族聚合的泛化行为名）。
+    """
+    observed = set(observed_names)
+    out = []
+    for fam, meta in (db.get("behaviors") or {}).items():
+        behs = {b for b in (meta.get("behaviors") or []) if b}
+        if behs and behs <= observed:
+            out.append((fam, meta))
+    return out

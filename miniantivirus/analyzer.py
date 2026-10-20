@@ -188,6 +188,19 @@ def analyze_sample(path, db, ctx=None, vt=False):
     else:
         res["iocs"] = {k: [] for k, _ in _IOC_RES}
 
+    # ---- 已学习家族行为匹配（autolearn 行为库闭环：库内行为集 ⊆ 当前命中集）----
+    observed = {h.get("name") for h in (res["behavior"] or {}).get("hits", [])
+                if h.get("name") and h.get("name") != "SBX-Combo"}
+    observed |= {fd.get("name") for fd in res["findings"]
+                 if fd.get("name") and not fd.get("name").startswith("Auto_")
+                 and fd.get("name") != "Learned-Behavior-Family"}
+    for fam, meta in sandbox.match_families(db, observed):
+        res["findings"].append({
+            "name": "Learned-Behavior-Family",
+            "level": "high" if meta.get("category") == "Ransomware" else "medium",
+            "detail": (f"行为特征命中已学习家族 [{fam}]（{meta.get('category')}"
+                       f"，库内 {len(meta.get('behaviors') or [])} 项行为）")})
+
     if vt:
         from .vt import VTClient
         if not VTClient.has_key():

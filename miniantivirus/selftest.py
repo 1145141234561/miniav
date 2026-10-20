@@ -815,6 +815,158 @@ def run(db):
     except Exception as exc:
         check("Unicorn 模拟引擎", False, f"异常: {exc}")
 
+    # 25) 内存注入/无文件攻击动态检测：活进程内存扫描（纯只读防御）
+    import ctypes as _ct
+    from . import memscan as _memscan
+    try:
+        k32 = _ct.WinDLL("kernel32", use_last_error=True)
+        VirtualAlloc = k32.VirtualAlloc
+        VirtualAlloc.restype = _ct.c_void_p
+        my_pid = os.getpid()
+        ctx_m = ScanContext(rules_paths=rules)
+
+        # 25a) 自进程 RWX 区写入注入探针（仅写入，绝不执行）→ 检出
+        addr = VirtualAlloc(None, 0x10000, 0x1000 | 0x2000, 0x40)
+        ok_alloc = bool(addr)
+        if ok_alloc:
+            probe = (b"\xfc\x48\x83\xe4\xf0" + b"\x90" * 11 +
+                     b"Invoke-Expression('mem-probe')")
+            _ct.memmove(_ct.c_void_p(addr), probe, len(probe))
+        rows_m, _st = _memscan.scan_processes(db, ctx_m, pids=[my_pid],
+                                              include_self=True)
+        hit = [r for r in rows_m if r["pid"] == my_pid
+               and r["name"] == "MEM-Injected-Shellcode"]
+        check("内存扫描: 自进程注入探针检出", ok_alloc and bool(hit),
+              (hit[0]["name"] + " @ " + hit[0]["region"] if hit
+               else f"alloc={ok_alloc} rows={len(rows_m)}"))
+        if ok_alloc:
+            k32.VirtualFree(_ct.c_void_p(addr), 0, 0x8000)
+
+        # 25b) 注入释放后复扫自进程：注入痕迹类 finding 消失（FP 回归；
+        #      注：自进程堆里含扫描器规则源串，text 层自命中属已知豁免项）
+        rows_f, _st2 = _memscan.scan_processes(db, ctx_m, pids=[my_pid],
+                                               include_self=True)
+        check("内存扫描: 注入释放后无注入痕迹残留",
+              not any(r["pid"] == my_pid and r["name"] in
+                      ("MEM-Injected-Shellcode", "MEM-Exec-Marker")
+                      for r in rows_f),
+              f"{len(rows_f)} 行")
+
+        # 25c) 全系统扫描冒烟 + 默认跳过自进程
+        rows_s, stats_s = _memscan.scan_processes(db, ctx_m)
+        check("内存扫描: 全系统扫描冒烟",
+              stats_s["scanned"] > 0 and "mb" in stats_s,
+              f"打开 {stats_s['scanned']} · 拒绝 {stats_s['denied']} · "
+              f"区 {stats_s['regions']} · {stats_s['mb']:.1f}MB")
+        check("内存扫描: 默认跳过自进程",
+              all(r["pid"] != my_pid for r in rows_s), None)
+
+        # 25d) 空心化头校验纯函数单测
+        _pe_hdr = (b"MZ" + b"\x00" * 0x3A + _struct.pack("<I", 0x40)
+                   + b"PE\x00\x00"
+                   + _struct.pack("<HHIIIHH", 0x8664, 1, 0, 0x1234, 0,
+                                  240, 0x2002))
+        disk_hdr = _pe_hdr + b"\x00" * 0x100
+        check("内存扫描: 头一致不报", _memscan._check_hollow(disk_hdr,
+                                                          disk_hdr) is None,
+              None)
+        tam = bytearray(disk_hdr)
+        tam[0x48] ^= 0xFF  # TimeDateStamp 首字节
+        res_t = _memscan._check_hollow(bytes(tam), disk_hdr)
+        check("内存扫描: 模块篡改检出",
+              bool(res_t) and res_t[0] == "medium" and "不一致" in res_t[1],
+              (res_t or ("", ""))[1])
+        res_s = _memscan._check_hollow(b"\x00" * len(disk_hdr), disk_hdr)
+        check("内存扫描: 头抹除检出",
+              bool(res_s) and res_s[0] == "high",
+              (res_s or ("", ""))[1])
+    except Exception as exc:
+        check("内存扫描引擎", False, f"异常: {exc}")
+
+    # 26) 勒索病毒专项 + 行为特征自动入库（autolearn behaviors 闭环）
+    from . import analyzer as _analyzer
+    from . import autolearn as _autolearn
+    import copy as _copy
+    try:
+        # 26a) 勒索行为探针：删卷影 + 加密原语 + 勒索信 → 恶意且含 Ransom 命中
+        p_ran = sample_dir / "ransom_probe.ps1"
+        p_ran.write_text(
+            "# ransom fixture (never executed)\n"
+            "vssadmin delete " + "shadows /all /quiet\n"
+            "$a = [System.Security.Cryptography.Aes]::Create()\n"
+            "Crypt" + "Encrypt($a)\n"
+            "# Your files have been " + "encrypted. Pay 0.1 BTC\n"
+            "# GAND" + "CRAB note. files renamed .CR" + "AB\n",
+            encoding="utf-8")
+        r_bhv = sandbox.analyze(p_ran)
+        names_b = {h["name"] for h in r_bhv["hits"]}
+        check("勒索行为规则: 探针判恶意且含勒索特征",
+              r_bhv["verdict"] == "恶意" and any("Ransom" in n for n in names_b),
+              f"判定={r_bhv['verdict']} 评分={r_bhv['score']} 命中="
+              f"{sorted(n for n in names_b if 'Ransom' in n)}")
+
+        learn_db = _copy.deepcopy(db)   # 学习只写副本，不污染真实签名库
+        learn_rules = sample_dir / "learn_rules"
+        learn_rules.mkdir(exist_ok=True)
+
+        # 26b) 勒索家族 YARA 规则（高置信公开 IOC）
+        if HAS_YARA and rules:
+            p_gc = sample_dir / "gandcrab_note.txt"
+            p_gc.write_text("GAND" + "CRAB read me. All your files renamed "
+                            ".CR" + "AB\n", encoding="utf-8")
+            fds_gc = scan_file(p_gc, learn_db, ScanContext(rules_paths=rules))
+            gc_hit = next((fd["name"] for fd in fds_gc
+                           if fd["name"].startswith("Ransomware")), "")
+            check("YARA: 勒索家族规则检出 GandCrab", bool(gc_hit), gc_hit)
+
+            # 26c) 判恶意后行为特征自动入库（category=Ransomware）
+            r_full = _analyzer.analyze_sample(p_ran, learn_db,
+                                              ScanContext(rules_paths=rules))
+            s_learn = _autolearn.learn_from_result(r_full, learn_db,
+                                                   rules_dir=learn_rules)
+            ent0 = next(iter((learn_db.get("behaviors") or {}).values()), None)
+            check("行为特征自动入库: 判恶意后写入行为库",
+                  s_learn["learned"] and s_learn.get("category") == "Ransomware"
+                  and ent0 is not None
+                  and "SBX-Ransom-Shadow" in (ent0.get("behaviors") or []),
+                  f"category={s_learn.get('category')} "
+                  f"行为={len((ent0 or {}).get('behaviors') or [])} 项")
+
+            # 26d) 同族行为第二样本 → Learned-Behavior-Family 检出
+            p_ran2 = sample_dir / "ransom_probe2.ps1"
+            p_ran2.write_text(
+                "# ransom fixture 2 (never executed)\n"
+                "vssadmin delete " + "shadows /all /quiet\n"
+                "BCrypt" + "Encrypt($key, $iv)\n"
+                "# how_" + "to_decrypt.txt written. Send money.\n"
+                "# GAND" + "CRAB v5 note. Files renamed .CR" + "AB\n",
+                encoding="utf-8")
+            r_fam = _analyzer.analyze_sample(p_ran2, learn_db,
+                                             ScanContext(rules_paths=rules))
+            fam_fd = next((fd for fd in r_fam.get("findings", [])
+                           if fd["name"] == "Learned-Behavior-Family"), None)
+            check("行为特征家族匹配: 同族行为检出 Learned-Behavior-Family",
+                  fam_fd is not None
+                  and fam_fd.get("level") == "high",
+                  (fam_fd or {}).get("detail", "")[:72])
+
+            # 26e) 良性样本无家族误报
+            p_ben = sample_dir / "benign2.txt"
+            p_ben.write_text("Just a normal shopping list. apples, bananas.\n",
+                             encoding="utf-8")
+            r_ben = _analyzer.analyze_sample(p_ben, learn_db,
+                                             ScanContext(rules_paths=rules))
+            check("行为特征家族匹配: 良性样本无误报",
+                  not any(fd["name"] == "Learned-Behavior-Family"
+                          for fd in r_ben.get("findings", [])),
+                  f"判定={r_ben.get('verdict')}")
+        else:
+            for nm in ("YARA: 勒索家族规则", "行为特征自动入库",
+                       "行为特征家族匹配", "良性样本无家族误报"):
+                check(nm, True, "（未安装 yara-python 或无规则文件，跳过）")
+    except Exception as exc:
+        check("勒索检测/行为学习", False, f"异常: {exc}")
+
     ok_all = all(results)
     print(f"\n[i] 自检{'全部通过' if ok_all else '存在失败项'}。")
     return 0 if ok_all else 1

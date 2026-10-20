@@ -11,6 +11,9 @@
     PE 样本加 MZ 门，脚本/文本用 filesize 门，字符串 >= 2 条 + 组合计数
     条件（至少 2 of），meta.auto_generated=true 便于审查与批量清理。
     自动规则写入前先试编译，失败自动回滚，只保留哈希。
+  行为特征（db["behaviors"]，按家族聚合）：泛化行为名并集（SBX-* / 家族级 YARA
+    规则名等，剔除样本专属 Auto_ 规则），供 Learned-Behavior-Family 家族匹配，
+    category 为 Ransomware（命中勒索特征）或 Malware。
 
 绝不执行样本：仅静态读取字节做字符串/IOC 提取。
 """
@@ -50,11 +53,41 @@ def _family(result):
     for fd in sorted(result.get("findings", []),
                      key=lambda f: f.get("level") == "high",
                      reverse=True):
+        if fd.get("name") == "Learned-Behavior-Family":
+            continue
         if fd.get("level") in ("high", "medium"):
             fam = re.sub(r"[^A-Za-z0-9_]", "_", str(fd.get("name", "")))[:40]
             if fam:
                 return fam
     return "Sample"
+
+
+def _observed_behaviors(result):
+    """泛化行为名集合（行为层命中 + 引擎检出），剔除样本专属规则名。
+
+    SBX-Combo 可由底层规则推导、Auto_* 为单样本哈希/字符串规则、
+    Learned-Behavior-Family 是匹配结果自身，均不入库（防反馈污染）。
+    """
+    names = set()
+    for h in (result.get("behavior") or {}).get("hits", []):
+        n = str(h.get("name") or "")
+        if n and n != "SBX-Combo":
+            names.add(n)
+    for fd in result.get("findings", []):
+        n = str(fd.get("name") or "")
+        if n and not n.startswith("Auto_") and n != "Learned-Behavior-Family":
+            names.add(n)
+    return names
+
+
+def _category(result):
+    """家族类别：命中勒索相关特征 → Ransomware，否则 Malware。"""
+    blob = " ".join(
+        [f"{h.get('name', '')} {h.get('desc', '')}"
+         for h in (result.get("behavior") or {}).get("hits", [])]
+        + [f"{fd.get('name', '')} {fd.get('detail', '')}"
+           for fd in result.get("findings", [])]).lower()
+    return "Ransomware" if "ransom" in blob else "Malware"
 
 
 def _rule_name(result, sha256):
@@ -131,16 +164,19 @@ def learn_from_result(result, db, rules_dir=None):
     """从 analyze_sample 结果学习特征入库（只改传入 db，落盘由调用方 save_db）。
 
     返回摘要 dict：{"learned": bool, "hashes": [algo...], "rule": str|None,
-                    "strings": int, "notes": [str...]}
+                    "strings": int, "behaviors": [name...], "category": str|None,
+                    "notes": [str...]}
     """
     notes = []
     if result.get("verdict") != "恶意":
         return {"learned": False, "hashes": [], "rule": None,
-                "strings": 0, "notes": [f"判定为 {result.get('verdict')}，不学习"]}
+                "strings": 0, "behaviors": [], "category": None,
+                "notes": [f"判定为 {result.get('verdict')}，不学习"]}
     sha = result["hashes"]["sha256"]
     if sha in db.get("whitelist", {}):
         return {"learned": False, "hashes": [], "rule": None,
-                "strings": 0, "notes": ["样本在白名单中，不学习"]}
+                "strings": 0, "behaviors": [], "category": None,
+                "notes": ["样本在白名单中，不学习"]}
 
     from .sigdb import add_hash
     name = _family(result)
@@ -152,6 +188,41 @@ def learn_from_result(result, db, rules_dir=None):
             added.append(algo)
     if not added:
         notes.append("哈希已存在，跳过")
+
+    # ---- 行为特征入库（家族级泛化行为集，供 Learned-Behavior-Family 匹配）----
+    cat, behs_n = None, 0
+    behaviors = _observed_behaviors(result)
+    if behaviors:
+        fam_key = _family(result)
+        bdb = db.setdefault("behaviors", {})
+        ent = bdb.get(fam_key)
+        if ent is None:
+            cat = _category(result)
+            bdb[fam_key] = {"category": cat,
+                            "behaviors": sorted(behaviors)[:64],
+                            "score": int(result.get("score") or 0),
+                            "first_seen": time.strftime("%Y-%m-%d %H:%M:%S"),
+                            "samples": [sha]}
+            behs_n = len(bdb[fam_key]["behaviors"])
+            notes.append(f"行为特征入库: {fam_key}（{cat}，{behs_n} 项行为）")
+        else:
+            merged = sorted(set(ent.get("behaviors") or []) | behaviors)[:64]
+            ent["behaviors"] = merged
+            old_cat = ent.get("category") or "Malware"
+            new_cat = _category(result)
+            # 勒索类别一旦确立不降级
+            ent["category"] = ("Ransomware" if "Ransomware" in (old_cat, new_cat)
+                               else "Malware")
+            cat = ent["category"]
+            ent["score"] = max(int(ent.get("score") or 0),
+                               int(result.get("score") or 0))
+            samples = ent.setdefault("samples", [])
+            if sha not in samples:
+                samples.append(sha)
+                del samples[:-16]
+            ent["last_seen"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            behs_n = len(merged)
+            notes.append(f"行为特征合并: {fam_key}（现 {behs_n} 项行为）")
 
     rule_name, strs_written = None, 0
     try:
@@ -169,7 +240,8 @@ def learn_from_result(result, db, rules_dir=None):
         notes.append(f"规则生成失败: {exc}")
 
     return {"learned": True, "hashes": added, "rule": rule_name,
-            "strings": strs_written, "notes": notes}
+            "strings": strs_written, "behaviors": sorted(behaviors),
+            "category": cat, "notes": notes}
 
 
 def format_summary(s):
@@ -178,5 +250,8 @@ def format_summary(s):
         return "[i] 自动学习: " + "; ".join(s["notes"])
     lines = [f"[+] 自动学习完成: 哈希入库 {', '.join(s['hashes']) or '无新增'}"
              + (f"，规则 {s['rule']}（{s['strings']} 串）" if s["rule"] else "")]
+    if s.get("behaviors"):
+        lines[0] += (f"，行为特征 {len(s['behaviors'])} 项"
+                     f"（{s.get('category') or 'Malware'}）")
     lines += [f"    - {n}" for n in s["notes"]]
     return "\n".join(lines)

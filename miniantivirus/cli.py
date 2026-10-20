@@ -9,7 +9,7 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
-from . import analyzer, autoruns, pack, procscan, report, sandbox, scanner
+from . import analyzer, autoruns, memscan, pack, procscan, report, sandbox, scanner
 from .scanner import ScanContext, _in_quarantine, quarantine_file, scan_file
 from .signatures import RULES_DIR, SCAN_LOG, load_db, save_db
 
@@ -243,6 +243,32 @@ def cmd_procs(args):
     """进程安全检查：运行进程快照的签名/落位/伪装/哈希黑名单核查。"""
     rows, stats = procscan.scan_processes(load_db())
     print(procscan.format_report(rows, stats))
+    return 1 if stats["suspicious"] else 0
+
+
+def cmd_memscan(args):
+    """活进程内存扫描：内存注入/无文件攻击检出（只读，不注入不终止）。"""
+    db = load_db()
+    rules = ([str(x) for x in _collect_rule_files(getattr(args, "rules", None))]
+             if (getattr(args, "rules", None) or RULES_DIR.exists()) else [])
+    if rules and not scanner.HAS_YARA:
+        print("[!] 检测到 YARA 规则但未安装 yara-python，忽略规则层")
+        rules = []
+    ctx = ScanContext(rules_paths=rules,
+                      whitelist=dict(db.get("whitelist", {})))
+    pids = getattr(args, "pid", None) or None
+    rows, stats = memscan.scan_processes(db, ctx, pids=pids,
+                                         include_self=bool(
+                                             getattr(args, "include_self",
+                                                     False)))
+    print(memscan.format_report(rows, stats))
+    if getattr(args, "report", None):
+        out = report.write_html(args.report, {
+            "target": "进程内存扫描（无文件攻击检测）",
+            "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "files": stats["scanned"], "findings": stats["findings"]},
+            [{"path": f"pid:{r['pid']} {r['proc']}", **r} for r in rows])
+        print(f"[i] HTML 报告已生成: {out}")
     return 1 if stats["suspicious"] else 0
 
 
@@ -670,6 +696,16 @@ def build_parser():
 
     prp = sub.add_parser("procs", help="进程安全检查（签名/落位/伪装/黑名单）")
     prp.set_defaults(func=cmd_procs)
+
+    mp2 = sub.add_parser("memscan",
+                         help="活进程内存扫描：内存注入/无文件攻击检出（只读）")
+    mp2.add_argument("--pid", type=int, action="append", metavar="N",
+                     help="只扫描指定 PID（可多次，默认全系统）")
+    mp2.add_argument("--rules", help="YARA 规则文件或目录（默认自动加载 rules/）")
+    mp2.add_argument("--include-self", action="store_true",
+                     help="包含本进程（默认跳过：扫描器自带规则串会自命中）")
+    mp2.add_argument("--report", metavar="PATH", help="生成自包含 HTML 报告")
+    mp2.set_defaults(func=cmd_memscan)
 
     pp = sub.add_parser("protect",
                         help="进程自保护（MiniAVProt 内核驱动，修改状态需管理员）")

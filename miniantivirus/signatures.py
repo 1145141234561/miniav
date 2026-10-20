@@ -24,6 +24,7 @@ DEFAULT_DB = {
     "patterns": [],
     "exclusions": ["*.pyc", "*.yar", "*.yara"],
     "whitelist": {},
+    "behaviors": {},
 }
 
 
@@ -67,6 +68,12 @@ def normalize_db(db):
         db["whitelist"] = {}
     if not isinstance(db.get("vulnerable_drivers"), dict):
         db["vulnerable_drivers"] = {}
+    behs = db.get("behaviors")
+    if not isinstance(behs, dict):
+        db["behaviors"] = {}
+    else:   # 丢弃损坏条目（家族名 → 元信息 dict）
+        for k in [k for k, v in behs.items() if not isinstance(v, dict)]:
+            behs.pop(k)
     return db
 
 
