@@ -912,6 +912,9 @@ def cmd_sigdb(args):
 
 
 def main(argv=None):
+    # 双击 exe（无参数）时默认启动图形界面，避免控制台闪退
+    if argv is None and len(sys.argv) <= 1:
+        argv = ["gui"]
     args = build_parser().parse_args(argv)
     try:
         return args.func(args)
