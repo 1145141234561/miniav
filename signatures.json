@@ -1,0 +1,38 @@
+{
+  "version": 2,
+  "hashes": {
+    "sha256": {
+      "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa": {
+        "name": "WannaCry.Ransomware.Sha256",
+        "level": "high"
+      },
+      "027cc450ef5f8c5f653329641ec1fed91f694e0d229928963b30f6b0d7d3a345": {
+        "name": "NotPetya.Payload.Sha256",
+        "level": "high"
+      }
+    },
+    "md5": {},
+    "sha1": {}
+  },
+  "vulnerable_drivers": {},
+  "patterns": [
+    {
+      "name": "PS-Remote-Download-Pattern",
+      "level": "medium",
+      "type": "regex",
+      "data": "(?i)downloadstring\\s*\\(\\s*['\\\"]https?://"
+    },
+    {
+      "type": "regex",
+      "data": "stratum\\+(tcp|ssl)://\\S+",
+      "name": "Coin-Miner-Pool-Config",
+      "level": "medium"
+    }
+  ],
+  "exclusions": [
+    "*.pyc",
+    "*.yar",
+    "*.yara"
+  ],
+  "whitelist": {}
+}

@@ -1,0 +1,35 @@
+# ---- 敏感文件：绝不入库 ----
+MiniAVSigning.pfx
+*.pfx
+*.pem
+*.key
+.known_hosts
+quarantine/
+
+# ---- 构建产物（可由源码重建）----
+build/
+dist/
+MiniAV.exe
+MiniAVProt.sys
+MiniAV-Pack.zip
+*.tmp
+
+# ---- Python 缓存 ----
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# ---- 运行时缓存 / 日志 / 报告 ----
+scan_cache.json
+scan_cache.json.tmp
+vt_cache.json
+scan.log
+audit.log
+smoke_result.txt
+scan_report.html
+*.report.html
+
+# ---- IDE / 工具元数据 ----
+.trae/
+.trae-html-share-packages/
+.vscode/
