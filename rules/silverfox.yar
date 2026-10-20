@@ -57,3 +57,37 @@ rule SilverFox_SafeCenter
     condition:
         uint16(0) == 0x5A4D and 1 of ($*)
 }
+
+/*
+    2026-09 instapp.s.1.12 投递链（微步云沙箱判定：银狐黑产团伙）：
+    instapp.s.1.12.exe → C:\Users\Public\nfJG82\ 随机名载荷 + DLL 侧加载
+    （UxEnhance64.dll/XPSPLOG.dll）→ SYSTEM 计划任务写 Defender 排除项
+    → C2 回连阿里云 OSS。两条规则覆盖解压后 PE 内嵌场景。
+*/
+rule SilverFox_InstApp_C2
+{
+    meta:
+        family = "SilverFox/InstApp"
+        level = "high"
+        source = "silverfox"
+        sample_sha256 = "d280bc9cbf487bec0c69fc62d4f3481a6d853315ddc424028b32604c42b0577b"
+    strings:
+        $d1 = "mm2027.oss-cn-hangzhou.aliyuncs.com" ascii wide nocase
+        $d2 = "ybjyz0.oss-cn-beijing.aliyuncs.com" ascii wide nocase
+    condition:
+        uint16(0) == 0x5A4D and 1 of ($*)
+}
+
+/* DLL 侧加载组件名（UxEnhance64/XPSPLOG，报告类文本无 MZ 门不误报） */
+rule SilverFox_Sideload_Chain
+{
+    meta:
+        family = "SilverFox/InstApp"
+        level = "medium"
+        source = "silverfox"
+    strings:
+        $n1 = "UxEnhance64" ascii wide nocase
+        $n2 = "XPSPLOG" ascii wide nocase
+    condition:
+        uint16(0) == 0x5A4D and 1 of ($*)
+}

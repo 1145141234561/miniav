@@ -1179,6 +1179,90 @@ def run(db):
     except Exception as exc:
         check("银狐离线扫描增强", False, f"异常: {exc}")
 
+    # 30) 银狐 instapp.s.1.12 链（微步报告反制）：Defender 排除项 + WDAC 篡改 + C2/侧加载规则
+    try:
+        # 30a) 标志行为链：SYSTEM 计划任务写 Defender 排除项 + 公共目录投递 → 判恶意
+        p_dx = sample_dir / "defexcl_probe.ps1"
+        p_dx.write_text(
+            "# fixture (never executed)\n"
+            "SCHTASKS /Create /F /TN \"Task1\" /SC ONCE /RL HIGHEST /RU \"SYSTEM\""
+            " /TR \"cmd.exe /c reg add 'HKLM\\SOFTWARE\\Microsoft\\Windows"
+            " Defender\\Exclusions\\Paths' /v 'C:\\Users\\Public\\nfJG82'"
+            " /t REG_DWORD /d 0 /f\"\n"
+            "Copy-Item payload.bin C:\\Users\\Public\\nf" + "JG82\\load.exe\n",
+            encoding="utf-8")
+        r_dx = sandbox.analyze(p_dx)
+        names_dx = {h["name"] for h in r_dx["hits"]}
+        check("银狐 instapp 链: Defender 排除项标志行为判恶意",
+              r_dx["verdict"] == "恶意" and "SBX-Defender-Exclusion" in names_dx
+              and "SBX-Fox-PublicDrop" in names_dx,
+              f"判定={r_dx['verdict']} 评分={r_dx['score']} "
+              f"组合={sorted(h['desc'][:18] for h in r_dx['hits'] if h['name'] == 'SBX-Combo')}")
+
+        # 30b) WDAC 策略篡改（SiPolicy.p7b 写入 CodeIntegrity）
+        p_wdac = sample_dir / "wdac_probe.ps1"
+        p_wdac.write_text(
+            "# fixture (never executed)\n"
+            "Copy-Item policy.p7b C:\\Windows\\System32\\Code"
+            "Integrity\\SiPolicy.p7b\n"
+            "citool --update-policy\n", encoding="utf-8")
+        r_wdac = sandbox.analyze(p_wdac)
+        check("银狐 instapp 链: WDAC SiPolicy 篡改检出",
+              any(h["name"] == "SBX-AntiDefense" for h in r_wdac["hits"]),
+              f"判定={r_wdac['verdict']} 命中={[h['name'] for h in r_wdac['hits']]}")
+
+        # 30c) C2 域名 PE 探针 → SilverFox_InstApp_C2
+        if HAS_YARA and rules:
+            p_c2 = sample_dir / "c2_probe.bin"
+            p_c2.write_bytes(b"MZ" + b"\x90" * 24
+                             + b"https://mm2027.oss-cn-hangzhou.aliyuncs.com/tad"
+                             + b"\x00" * 16)
+            fds_c2 = scan_file(p_c2, db, ScanContext(rules_paths=rules))
+            check("银狐 instapp 链: OSS C2 域名规则检出",
+                  any(fd["name"] == "SilverFox_InstApp_C2" for fd in fds_c2),
+                  next((fd["name"] for fd in fds_c2
+                        if fd["name"].startswith("SilverFox")), ""))
+
+            # 30d) 侧加载组件名探针 → SilverFox_Sideload_Chain
+            p_sl = sample_dir / "sideload_probe.bin"
+            p_sl.write_bytes(b"MZ" + b"\x90" * 46 + b"UxEnhance64.dll"
+                             + b"\x00" * 16)
+            fds_sl = scan_file(p_sl, db, ScanContext(rules_paths=rules))
+            check("银狐 instapp 链: DLL 侧加载名规则检出",
+                  any(fd["name"] == "SilverFox_Sideload_Chain" for fd in fds_sl),
+                  next((fd["name"] for fd in fds_sl
+                        if fd["name"].startswith("SilverFox")), ""))
+
+            # 30e) 报告类文本（含域名/组件名，无 MZ）不误报
+            p_rep2 = sample_dir / "instapp_report.txt"
+            p_rep2.write_text(
+                "报告分析了 mm2027.oss-cn-hangzhou.aliyuncs.com 与"
+                " UxEnhance64.dll 侧加载链。\n", encoding="utf-8")
+            fds_rep2 = scan_file(p_rep2, db, ScanContext(rules_paths=rules))
+            check("银狐 instapp 链: 报告类文本无误报",
+                  not any(fd["name"].startswith("SilverFox") for fd in fds_rep2),
+                  f"SilverFox 检出={[fd['name'] for fd in fds_rep2
+                                      if fd['name'].startswith('SilverFox')]}")
+        else:
+            for nm in ("银狐 instapp 链: OSS C2 域名规则",
+                       "银狐 instapp 链: DLL 侧加载名规则",
+                       "银狐 instapp 链: 报告类文本无误报"):
+                check(nm, True, "（未安装 yara-python，跳过）")
+
+        # 30f) 良性注册表操作不误报（非 Defender 排除项）
+        p_reg = sample_dir / "reg_clean.ps1"
+        p_reg.write_text("reg add 'HKCU\\Software\\MyApp\\Settings' /v Path"
+                         " /t REG_SZ /d 'C:\\Program Files\\MyApp' /f\n",
+                         encoding="utf-8")
+        r_reg = sandbox.analyze(p_reg)
+        check("银狐 instapp 链: 良性 reg add 不误报",
+              r_reg["verdict"] == "清洁"
+              and not any(h["name"] == "SBX-Defender-Exclusion"
+                          for h in r_reg["hits"]),
+              f"判定={r_reg['verdict']}")
+    except Exception as exc:
+        check("银狐 instapp 链反制", False, f"异常: {exc}")
+
     ok_all = all(results)
     print(f"\n[i] 自检{'全部通过' if ok_all else '存在失败项'}。")
     return 0 if ok_all else 1

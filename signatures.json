@@ -33,6 +33,22 @@
       "80e971b5caa2ae61a275c2d6471ca22dd25288581b6e40c500a4478c24c02981": {
         "name": "Abused-Bundled-NSudo",
         "level": "high"
+      },
+      "d280bc9cbf487bec0c69fc62d4f3481a6d853315ddc424028b32604c42b0577b": {
+        "name": "SilverFox-InstApp-Zip",
+        "level": "high"
+      },
+      "6d6ba2bc9ad414837826f7278bc3e0116f1aeda02d0c2284ed65819f5d9180a8": {
+        "name": "SilverFox-0yyr90-Stage2",
+        "level": "high"
+      },
+      "e683aec7d6737ff98115e5e439315aa2f065c365002c1259d94444198b27e1ad": {
+        "name": "SilverFox-UxEnhance-Sideload",
+        "level": "high"
+      },
+      "9c156e73312853a85299faf28722113fe28e02dacbea3d3855fb256cafc735a4": {
+        "name": "SilverFox-XPSPLOG-Sideload",
+        "level": "high"
       }
     },
     "md5": {
@@ -59,6 +75,10 @@
       "82c40094d63638440878889225bf17a1": {
         "name": "Abused-Bundled-NSudo",
         "level": "high"
+      },
+      "081d7df0ba4cc17b5f4d7613316c11bf": {
+        "name": "SilverFox-InstApp-Zip",
+        "level": "high"
       }
     },
     "sha1": {
@@ -72,6 +92,10 @@
       },
       "c5910fde92d95fb61e62991712434d1543d5d397": {
         "name": "SilverFox-Abused-AweSun",
+        "level": "high"
+      },
+      "96dc07f726364098fb92b3ac485cd7472103f7c5": {
+        "name": "SilverFox-InstApp-Zip",
         "level": "high"
       }
     }

@@ -19,8 +19,12 @@ RULES = [
     ("SBX-AntiDefense",
      re.compile(r"(?i)(set-mppreference|add-mppreference|"
                 r"vssadmin\s+delete\s+shadows|wmic\s+\S*shadowcopy\s+delete|"
-                r"bcdedit\s+/set\s+\S*safeboot)"), 3,
-     "试图关闭/规避安全防护或删除卷影副本"),
+                r"bcdedit\s+/set\s+\S*safeboot|"
+                r"codeintegrity.{0,16}sipolicy\.p7b)"), 3,
+     "试图关闭/规避安全防护、篡改 WDAC 策略或删除卷影副本"),
+    ("SBX-Defender-Exclusion",
+     re.compile(r"(?i)defender\\exclusions\\(paths|processes|extensions)"), 3,
+     "把路径/进程/扩展名加入 Defender 排除项（银狐标志对抗手法）"),
     ("SBX-CredAccess",
      re.compile(r"(?i)(mimikatz|sekurlsa|lsadump|"
                 r"netsh\s+wlan\s+show\s+profile|getnetworkcredential)"), 2,
@@ -114,8 +118,9 @@ RULES = [
     # ---- 银狐（Silver Fox）专项行为特征 ----
     ("SBX-Fox-PublicDrop",
      re.compile(r"(?i)(((%public%|users\\public|%appdata%|%programdata%|"
-                r"%temp%)[^\r\n]{0,60}(start-process|invoke-item|schtasks|"
-                r"reg\s+add))|((start-process|invoke-item)[^\r\n]{0,60}"
+                r"%temp%)[^\r\n]{0,120}(start-process|invoke-item|schtasks|"
+                r"reg\s+add))|((start-process|invoke-item|schtasks|reg\s+add)"
+                r"[^\r\n]{0,120}"
                 r"(%public%|users\\public|%appdata%|%programdata%|%temp%)))"), 2,
      "银狐：向公共/用户目录释放并执行载荷（仿冒软件投递落地）"),
     ("SBX-Fox-FakeProc",
@@ -168,6 +173,10 @@ COMBO_RULES = [
      "远控滥用通道 + 动态执行 = 银狐载荷执行链"),
     (frozenset({"SBX-Priv-NSudo", "SBX-Fox-PublicDrop"}), 2,
      "提权白工具 + 公共目录投递 = 银狐对抗提权链"),
+    (frozenset({"SBX-Defender-Exclusion", "SBX-Persistence"}), 2,
+     "计划任务持久化 + Defender 排除项 = 银狐标志对抗链（SYSTEM 提权加白）"),
+    (frozenset({"SBX-Defender-Exclusion", "SBX-Fox-PublicDrop"}), 2,
+     "公共目录投递 + Defender 排除项 = 银狐投递+免杀双链"),
 ]
 
 # oletools 提取出的宏代码会与文件文本合并分析
