@@ -183,6 +183,18 @@
       "data": "dllsystem\\.(io|net)",
       "name": "SilverFox-DllSystem-Domain",
       "level": "high"
+    },
+    {
+      "type": "regex",
+      "data": "AJiaSu_\\d+\\.\\d+\\.\\d+\\.\\d+\\.exe",
+      "name": "SilverFox-AJiaSu-Dropper-Chain",
+      "level": "high"
+    },
+    {
+      "type": "regex",
+      "data": "instapp\\.s\\.\\d+\\.\\d+",
+      "name": "SilverFox-InstApp-Template-Name",
+      "level": "high"
     }
   ],
   "exclusions": [
