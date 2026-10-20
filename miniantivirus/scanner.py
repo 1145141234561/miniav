@@ -136,13 +136,16 @@ class ScanContext:
     """
 
     def __init__(self, rules_paths=None, excludes=None, whitelist=None,
-                 vt=False, sigcheck=False, fast=False):
+                 vt=False, sigcheck=False, fast=False,
+                 deobf=True, emulate=False):
         self.rules_paths = [str(p) for p in (rules_paths or [])]
         self.excludes = [str(e) for e in (excludes or [])]
         self.whitelist = dict(whitelist or {})
         self.vt = bool(vt)
         self.sigcheck = bool(sigcheck)
         self.fast = bool(fast)
+        self.deobf = bool(deobf)
+        self.emulate = bool(emulate)
         self.cache_fp = None
         self._rules = None
         self._compiled = False
@@ -153,7 +156,9 @@ class ScanContext:
                 "whitelist": self.whitelist,
                 "vt": self.vt,
                 "sigcheck": self.sigcheck,
-                "fast": self.fast}
+                "fast": self.fast,
+                "deobf": self.deobf,
+                "emulate": self.emulate}
 
     @classmethod
     def from_spec(cls, spec):
@@ -162,7 +167,9 @@ class ScanContext:
                    whitelist=spec.get("whitelist"),
                    vt=bool(spec.get("vt")),
                    sigcheck=bool(spec.get("sigcheck")),
-                   fast=bool(spec.get("fast")))
+                   fast=bool(spec.get("fast")),
+                   deobf=bool(spec.get("deobf", True)),
+                   emulate=bool(spec.get("emulate", False)))
 
     def get_rules(self):
         if self._compiled:
@@ -332,6 +339,76 @@ def signature_finding(cat, code, is_driver=False):
     return None
 
 
+def _weight_level(weight):
+    return "high" if weight >= 3 else ("medium" if weight >= 2 else "low")
+
+
+def deobf_findings(data, db, ctx):
+    """迭代解混淆后对还原载荷复扫（反制变量名/字符串层混淆）。
+
+    还原层命中以原规则名报告，detail 标注解混淆链路；层数≥2 的隐藏
+    内容即使无规则命中也报 low（编码套编码本身即是规避信号）。
+    """
+    from . import deobf as _deobf
+    from . import sandbox as _sandbox
+    out, max_depth, seen = [], 0, set()
+    for chain, blob in _deobf.reveal(data):
+        max_depth = max(max_depth, chain.count("→") + 1)
+        for fd in content_findings(blob, db, ctx):
+            if fd.get("level") == "error":
+                continue
+            key = (fd["name"], fd.get("detail", ""))
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({**fd, "detail": f"解混淆({chain})后命中: {fd.get('detail', '')}"})
+        try:
+            text = blob.decode("utf-8", "replace")
+        except Exception:
+            continue
+        for h in _sandbox.text_hits(text):
+            key = (h["name"], h["sample"])
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({"name": h["name"], "level": _weight_level(h["weight"]),
+                        "detail": f"解混淆({chain})后命中行为特征: {h['desc']}"})
+    if not out and max_depth >= 2:
+        out.append({"name": "Obfuscated-Content", "level": "low",
+                    "detail": f"检测到 {max_depth} 层嵌套编码载荷（base64/压缩/转义套叠），"
+                              "内容隐藏但未命中已知特征"})
+    return out
+
+
+def emu_findings(data, db, ctx):
+    """Unicorn 受限模拟后对运行时内存复扫（反制控制流混淆）。"""
+    from . import emu as _emu
+    from . import sandbox as _sandbox
+    out, seen = [], set()
+    for desc, frag in _emu.emulate(data):
+        for fd in content_findings(frag, db, ctx):
+            if fd.get("level") == "error":
+                continue
+            key = (fd["name"], fd.get("detail", ""))
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({**fd, "detail": f"Unicorn 模拟内存({desc})还原后命中: "
+                                        f"{fd.get('detail', '')}"})
+        try:
+            text = frag.decode("utf-8", "replace")
+        except Exception:
+            continue
+        for h in _sandbox.text_hits(text):
+            key = (h["name"], h["sample"])
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({"name": h["name"], "level": _weight_level(h["weight"]),
+                        "detail": f"Unicorn 模拟内存({desc})还原行为特征: {h['desc']}"})
+    return out
+
+
 def content_findings(data, db, ctx=None):
     """对一段字节内容做模式/EICAR/YARA 检测（供文件与压缩包条目复用）。"""
     findings = []
@@ -423,6 +500,12 @@ def scan_file(path, db, ctx=None):
     except OSError:
         return findings
     findings += content_findings(data, db, ctx)
+    if ctx.deobf and not findings:
+        try:
+            findings += deobf_findings(data, db, ctx)
+        except Exception as exc:
+            findings.append({"name": "Deobf-Error", "level": "low",
+                             "detail": f"解混淆引擎异常（已跳过）: {exc}"})
     if data[:2] == b"PK":
         from .archive import scan_zip
         try:
@@ -441,6 +524,12 @@ def scan_file(path, db, ctx=None):
         heur = pe_heuristics(data)
         if heur:
             findings.append(heur)
+        if ctx.emulate and len(data) <= 8 * 1024 * 1024:
+            try:
+                findings += emu_findings(data, db, ctx)
+            except Exception as exc:
+                findings.append({"name": "Emu-Error", "level": "low",
+                                 "detail": f"模拟引擎异常（已跳过）: {exc}"})
         if ctx.sigcheck:
             try:
                 if is_driver:

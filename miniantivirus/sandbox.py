@@ -124,6 +124,20 @@ def _read_text(data):
     return data.decode("latin-1")
 
 
+def text_hits(text):
+    """对一段文本应用全部行为规则，返回命中列表（不含组合与评分）。
+
+    供解混淆/模拟执行等还原层复扫使用。
+    """
+    hits = []
+    for name, rx, weight, desc in RULES:
+        m = rx.search(text)
+        if m:
+            hits.append({"name": name, "weight": weight, "desc": desc,
+                         "sample": m.group(0)[:60]})
+    return hits
+
+
 def analyze(path):
     """分析单个文件，返回 {path, score, verdict, hits, notes}。"""
     path = Path(path)
@@ -153,13 +167,9 @@ def analyze(path):
             result["notes"].append("Office 文档：未安装 oletools，跳过宏提取"
                                    "（pip install oletools 可启用）")
 
-    names = set()
-    for name, rx, weight, desc in RULES:
-        m = rx.search(text)
-        if m:
-            names.add(name)
-            result["hits"].append({"name": name, "weight": weight, "desc": desc,
-                                   "sample": m.group(0)[:60]})
+    hits = text_hits(text)
+    names = {h["name"] for h in hits}
+    result["hits"] = hits
 
     score = sum(h["weight"] for h in result["hits"])
     for combo_names, bonus, desc in COMBO_RULES:

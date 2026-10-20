@@ -48,7 +48,9 @@ def build_ctx(args, db):
                        whitelist=dict(db.get("whitelist", {})),
                        vt=vt,
                        sigcheck=bool(getattr(args, "sigcheck", False)),
-                       fast=bool(getattr(args, "fast", False)))
+                       fast=bool(getattr(args, "fast", False)),
+                       deobf=not bool(getattr(args, "no_deobf", False)),
+                       emulate=bool(getattr(args, "emu", False)))
 
 
 def _scan_worker(payload):
@@ -374,7 +376,9 @@ def cmd_offline(args):
                   list(getattr(args, "exclude", None) or []),
         whitelist=dict(db.get("whitelist", {})),
         vt=False,  # 离线模式：硬性关闭网络信誉查询
-        sigcheck=bool(getattr(args, "sigcheck", False)))
+        sigcheck=bool(getattr(args, "sigcheck", False)),
+        deobf=not bool(getattr(args, "no_deobf", False)),
+        emulate=bool(getattr(args, "emu", False)))
     files = ([target] if target.is_file() else
              sorted(p for p in target.rglob("*")
                     if p.is_file() and not _in_quarantine(p)))
@@ -628,6 +632,10 @@ def build_parser():
                     help="增量加速：跳过未变更的清洁文件（签名库/规则更新自动失效）")
     sp.add_argument("--quarantine", action="store_true",
                     help="自动隔离 high 级别检出")
+    sp.add_argument("--no-deobf", action="store_true",
+                    help="关闭迭代解混淆引擎（默认开启，还原 base64/压缩/XOR 套叠载荷）")
+    sp.add_argument("--emu", action="store_true",
+                    help="Unicorn 受限模拟：还原控制流混淆下运行时才出现的载荷（较慢）")
     sp.set_defaults(func=cmd_scan)
 
     wp = sub.add_parser("watch", help="准实时监视目录并扫描新增/修改文件")
@@ -636,6 +644,8 @@ def build_parser():
     wp.add_argument("--exclude", action="append", default=[], metavar="PATTERN")
     wp.add_argument("--sigcheck", action="store_true", help="校验 PE 数字签名")
     wp.add_argument("--quarantine", action="store_true")
+    wp.add_argument("--no-deobf", action="store_true")
+    wp.add_argument("--emu", action="store_true")
     wp.set_defaults(func=cmd_watch)
 
     vp = sub.add_parser("vt", help="查询 VirusTotal 哈希信誉（文件或 sha256）")
@@ -713,6 +723,10 @@ def build_parser():
     op.add_argument("--report", metavar="PATH", help="生成 HTML 报告")
     op.add_argument("--sigcheck", action="store_true", help="校验 PE 数字签名")
     op.add_argument("--quarantine", action="store_true", help="自动隔离 high 检出")
+    op.add_argument("--no-deobf", action="store_true",
+                    help="关闭迭代解混淆引擎（默认开启）")
+    op.add_argument("--emu", action="store_true",
+                    help="Unicorn 受限模拟（还原控制流混淆载荷）")
     op.set_defaults(func=cmd_offline)
 
     gp = sub.add_parser("sig-add", help="把文件哈希加入签名库或白名单")
