@@ -5,6 +5,9 @@ MiniAVSigning.pfx
 *.key
 .known_hosts
 quarantine/
+# 真实恶意样本接收目录：绝不入库
+samples/
+*.zip.pswd
 
 # ---- 构建产物（可由源码重建）----
 build/
