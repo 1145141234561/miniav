@@ -111,6 +111,21 @@ RULES = [
      re.compile(r"(?i)\.(locked|encrypted|locky|crab|cerber|"
                 r"wallet|crypt|sage|oni)\b"), 1,
      "勒索扩展名重命名痕迹（.locked/.locky/.crab 等）"),
+    # ---- 银狐（Silver Fox）专项行为特征 ----
+    ("SBX-Fox-PublicDrop",
+     re.compile(r"(?i)(((%public%|users\\public|%appdata%|%programdata%|"
+                r"%temp%)[^\r\n]{0,60}(start-process|invoke-item|schtasks|"
+                r"reg\s+add))|((start-process|invoke-item)[^\r\n]{0,60}"
+                r"(%public%|users\\public|%appdata%|%programdata%|%temp%)))"), 2,
+     "银狐：向公共/用户目录释放并执行载荷（仿冒软件投递落地）"),
+    ("SBX-Fox-FakeProc",
+     re.compile(r"(?i)((%appdata%|%programdata%|users\\public|\\temp\\)"
+                r"[^\r\n]{0,50}(svchost|csrss|lsass|services|winlogon|"
+                r"rundll32|dllhost)\.exe)"), 2,
+     "银狐：非系统目录下仿冒系统进程名落地执行"),
+    ("SBX-Fox-Ghost",
+     re.compile(r"(?i)(gh\s*0st|大灰狼|gh0st[_\s]{0,2}rat)"), 2,
+     "Gh0st/大灰狼系远控家族特征串（银狐常用载荷）"),
 ]
 
 # 行为组合加分：单一特征危害有限，组合出现时危害倍增
@@ -137,6 +152,11 @@ COMBO_RULES = [
      "勒索信 + 加密原语 = 勒索软件赎金交付链"),
     (frozenset({"SBX-Ransom-Shadow", "SBX-Ransom-Note"}), 2,
      "删除卷影副本 + 勒索信 = 勒索软件标志组合"),
+    # ---- 银狐行为链组合 ----
+    (frozenset({"SBX-Fox-PublicDrop", "SBX-Fox-FakeProc"}), 2,
+     "公共目录释放 + 仿冒系统进程 = 银狐典型投递落地链"),
+    (frozenset({"SBX-Fox-Ghost", "SBX-Persistence"}), 2,
+     "远控特征 + 持久化 = 银狐驻留链"),
 ]
 
 # oletools 提取出的宏代码会与文件文本合并分析

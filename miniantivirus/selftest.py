@@ -967,6 +967,50 @@ def run(db):
     except Exception as exc:
         check("勒索检测/行为学习", False, f"异常: {exc}")
 
+    # 27) 银狐（Silver Fox）专项：投递落地行为 + Gh0st 系远控
+    try:
+        # 27a) 投递落地探针：公共目录释放执行 + 仿冒系统进程 + 计划任务持久化
+        p_fox = sample_dir / "fox_probe.ps1"
+        p_fox.write_text(
+            "# silver fox fixture (never executed)\n"
+            "Copy-Item evil.dll C:\\Users\\Public\\svchost.exe\n"
+            "Start-Process C:\\Users\\Public\\svc" + "host.exe\n"
+            "schtasks /create /tn Updater /sc onlogon /tr C:\\Users\\Public"
+            "\\svc" + "host.exe\n",
+            encoding="utf-8")
+        r_fox = sandbox.analyze(p_fox)
+        names_f = {h["name"] for h in r_fox["hits"]}
+        check("银狐行为规则: 投递落地链判恶意",
+              r_fox["verdict"] == "恶意" and "SBX-Fox-PublicDrop" in names_f
+              and "SBX-Fox-FakeProc" in names_f,
+              f"判定={r_fox['verdict']} 评分={r_fox['score']} "
+              f"命中={sorted(n for n in names_f if 'Fox' in n)}")
+
+        # 27b) Gh0st 系 PE 探针 → YARA 家族规则
+        if HAS_YARA and rules:
+            p_ghost = sample_dir / "ghost_probe.bin"
+            p_ghost.write_bytes(b"MZ" + b"\x90" * 62 + b"gh" + b"0st"
+                                + b"\x00" * 16)
+            fds_g = scan_file(p_ghost, db, ScanContext(rules_paths=rules))
+            g_hit = next((fd["name"] for fd in fds_g
+                          if fd["name"].startswith("SilverFox")), "")
+            check("YARA: 银狐/Gh0st 家族规则检出", bool(g_hit), g_hit)
+
+            # 27c) 分析报告类文本不误报（无 MZ 门不命中 PE 规则）
+            p_rep = sample_dir / "ghost_report.txt"
+            p_rep.write_text("报告中分析了 gh" + "0st 家族样本的结构。\n",
+                             encoding="utf-8")
+            fds_r = scan_file(p_rep, db, ScanContext(rules_paths=rules))
+            check("银狐规则: 报告类文本无误报",
+                  not any(fd["name"].startswith("SilverFox") for fd in fds_r),
+                  f"SilverFox 检出="
+                  f"{[fd['name'] for fd in fds_r if fd['name'].startswith('SilverFox')]}")
+        else:
+            for nm in ("YARA: 银狐/Gh0st 家族规则", "银狐规则: 报告类文本无误报"):
+                check(nm, True, "（未安装 yara-python，跳过）")
+    except Exception as exc:
+        check("银狐检测", False, f"异常: {exc}")
+
     ok_all = all(results)
     print(f"\n[i] 自检{'全部通过' if ok_all else '存在失败项'}。")
     return 0 if ok_all else 1
