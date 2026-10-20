@@ -73,3 +73,25 @@ rule Worm_Email_Script
     condition:
         filesize < 4MB and 1 of ($o*) and 1 of ($m*)
 }
+
+/*
+    暴风一号（Storm-1/VBS 感染型蠕虫，作者 9-_-BoyFine）：
+    样本采用「整行字符反转」混淆——所有标识符以反转形态存在于
+    原文（GetMainVirus→suriVniaMteG，署名 BoyFine→eniFyoB），
+    明文锚全部失效，故锚定反转形态双串（核心函数名+作者署名）。
+    2 of 双锚压制单串巧合；filesize 门限定脚本体量。
+    实测原始样本命中；分析报告文本只含正序形态，零误报。
+*/
+rule Worm_VBS_Storm1
+{
+    meta:
+        family = "Worm/VBS-Storm1"
+        level = "high"
+        source = "worm-draft"
+        note = "反转混淆形态锚：核心函数名+作者署名共存；行反转混淆实证样本"
+    strings:
+        $r1 = "suriVniaMteG" ascii nocase
+        $r2 = "eniFyoB" ascii nocase
+    condition:
+        filesize < 2MB and 2 of ($r*)
+}

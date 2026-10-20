@@ -81,6 +81,10 @@
       "623b308ddcf2f11db3a87763c662a23d0dfb754d02a88771fd7cda6d6f635495": {
         "name": "SilverFox6-Chrome64-MonKeyDu-MSI",
         "level": "high"
+      },
+      "b0d12dd7642e5ed3385341bd7b227e3b502754e2c5964eb48aaf2e48781f8676": {
+        "name": "Storm1-VBS-Worm",
+        "level": "high"
       }
     },
     "md5": {
@@ -142,6 +146,10 @@
       },
       "efa3cfa63749b167e9f83254857414e5": {
         "name": "SilverFox6-Chrome64-MonKeyDu-MSI",
+        "level": "high"
+      },
+      "3509431b942232f5c50863baaa02d900": {
+        "name": "Storm1-VBS-Worm",
         "level": "high"
       }
     },

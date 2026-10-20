@@ -1444,6 +1444,53 @@ def run(db):
     except Exception as exc:
         check("蠕虫检测规则草案", False, f"异常: {exc}")
 
+    # ==================== 第 33 组：暴风一号反转混淆反制 ====================
+    # 行反转混淆 VBS 蠕虫（Storm1）：明文锚失效，锚定反转形态双串。
+    # 合成探针复刻混淆形态，绝不触碰真实样本文件。
+    try:
+        if _gen_has_yara:
+            st_dir = sample_dir / "storm1_probes"
+            st_dir.mkdir(exist_ok=True)
+            ctx_s = ScanContext(rules_paths=rules)
+
+            # 33a) 反转形态双锚合成探针 → Worm_VBS_Storm1
+            p_st = st_dir / "storm1_like.vbs"
+            p_st.write_text(
+                "'eniFyoB.9-_-  :haey oG\n"
+                "'suriVniaMteG = sutisVniaMteG\n"
+                "WScript.Echo \"demo\"\n", encoding="utf-8")
+            h_st = [fd["name"] for fd in scan_file(p_st, db, ctx_s)]
+            check("Storm1: 反转形态探针检出",
+                  "Worm_VBS_Storm1" in h_st, f"{h_st}")
+
+            # 33b) 正序分析报告文本（含正序函数名/署名）零误报
+            p_str = st_dir / "storm1_report.txt"
+            p_str.write_text(
+                "报告：暴风一号 VBS 蠕虫采用整行字符反转混淆，核心函数 "
+                "GetMainVirus 与作者署名 9-_-BoyFine 在原文中均以反转形态"
+                "存在，明文特征串全部失效。\n", encoding="utf-8")
+            h_str = [fd["name"] for fd in scan_file(p_str, db, ctx_s)]
+            check("Storm1: 分析报告文本零误报",
+                  not any(fd["name"] == "Worm_VBS_Storm1" for fd in
+                          scan_file(p_str, db, ctx_s)), f"{h_str}")
+
+            # 33c) 普通良性 VBS 零误报
+            p_stb = st_dir / "benign.vbs"
+            p_stb.write_text(
+                "Set sh = CreateObject(\"WScript.Shell\")\n"
+                "sh.Popup \"hello\", 1\n", encoding="utf-8")
+            h_stb = [fd["name"] for fd in scan_file(p_stb, db, ctx_s)]
+            check("Storm1: 良性 VBS 零误报",
+                  not any(fd["name"] == "Worm_VBS_Storm1" for fd in
+                          scan_file(p_stb, db, ctx_s)), f"{h_stb}")
+        else:
+            for nm in ("Storm1: 反转形态探针检出",
+                       "Storm1: 分析报告文本零误报",
+                       "Storm1: 良性 VBS 零误报"):
+                check(nm, True, "（未安装 yara-python，跳过）")
+    except Exception as exc:
+        check("暴风一号反转混淆反制", False, f"异常: {exc}")
+
     ok_all = all(results)
     print(f"\n[i] 自检{'全部通过' if ok_all else '存在失败项'}。")
     return 0 if ok_all else 1
