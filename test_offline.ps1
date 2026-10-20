@@ -44,6 +44,7 @@ try {
 
     $out = (& $engine pack info $packZip) -join "`n"
     Assert "包内含 evasion_loader.yar" ($out -match "evasion_loader\.yar")
+    Assert "包内含银狐/勒索专项规则" (($out -match "silverfox\.yar") -and ($out -match "ransomware\.yar"))
     Assert "包内含既有规则 (malware/packers/webshell)" (($out -match "malware\.yar") -and ($out -match "packers\.yar") -and ($out -match "webshell\.yar"))
 
     # ---- 2) 生成探针夹具 ----
@@ -78,7 +79,52 @@ try {
         ('$c.Download' + 'String(''https://example.invalid/payload'')')
         ('IEX' + '($c)')
     )
-    Assert "夹具就绪 (4 探针 + 1 良性)" ((Get-ChildItem $fixtures).Count -eq 5)
+    # 2f) 银狐探针组: kb_out 释放器 / SafeCenter 加载器 / Gh0st 家族（YARA 层）
+    function New-MzProbe([string]$tag) {
+        $ms = New-Object System.Collections.Generic.List[byte]
+        $ms.Add(0x4D); $ms.Add(0x5A)
+        1..56 | ForEach-Object { $ms.Add(0x90) }
+        [System.Text.Encoding]::ASCII.GetBytes($tag) |
+            ForEach-Object { $ms.Add($_) }
+        1..16 | ForEach-Object { $ms.Add(0x00) }
+        return $ms.ToArray()
+    }
+    [System.IO.File]::WriteAllBytes((Join-Path $fixtures "fox_kb.bin"),
+        (New-MzProbe "kb_out_W.P.S.50.513"))
+    [System.IO.File]::WriteAllBytes((Join-Path $fixtures "fox_sc.bin"),
+        (New-MzProbe "SafeCenterController"))
+    [System.IO.File]::WriteAllBytes((Join-Path $fixtures "fox_ghost.bin"),
+        (New-MzProbe ("gh" + "0st")))
+    # 2g) PyInstaller CArchive 结构探针: 内嵌 setup.exe 载荷条目（结构启发层）
+    function BE([int]$v) {
+        return [byte[]]@((($v -shr 24) -band 0xFF), (($v -shr 16) -band 0xFF),
+                         (($v -shr 8) -band 0xFF), ($v -band 0xFF))
+    }
+    function New-CarchiveFixture([string[]]$Names, [byte[]]$Types) {
+        $toc = New-Object System.Collections.Generic.List[byte]
+        for ($i = 0; $i -lt $Names.Count; $i++) {
+            $nb = [System.Text.Encoding]::ASCII.GetBytes($Names[$i])
+            $toc.AddRange([byte[]](BE (18 + $nb.Length)))
+            $toc.AddRange([byte[]](BE 0)); $toc.AddRange([byte[]](BE 0x100))
+            $toc.AddRange([byte[]](BE 0x200)); $toc.Add(1); $toc.Add($Types[$i])
+            $toc.AddRange($nb)
+        }
+        $payload = [System.Text.Encoding]::ASCII.GetBytes(("PYDUMMYDATA" * 64))
+        $pkgLen = $payload.Length + $toc.Count + 88
+        $cookie = New-Object System.Collections.Generic.List[byte]
+        $cookie.AddRange([byte[]]@(0x4D, 0x45, 0x49, 0x0C, 0x0B, 0x0A, 0x0B, 0x0E))
+        $cookie.AddRange([byte[]](BE $pkgLen)); $cookie.AddRange([byte[]](BE $payload.Length))
+        $cookie.AddRange([byte[]](BE $toc.Count)); $cookie.AddRange([byte[]](BE 314))
+        $cookie.AddRange([System.Text.Encoding]::ASCII.GetBytes("python314.dll"))
+        while ($cookie.Count -lt 88) { $cookie.Add(0) }
+        $out = New-Object System.Collections.Generic.List[byte]
+        $out.AddRange($payload); $out.AddRange($toc); $out.AddRange($cookie.ToArray())
+        return $out.ToArray()
+    }
+    $pyi = New-CarchiveFixture -Names @("main.py", "setup.exe", "config.json") `
+                               -Types ([byte[]]@(0x73, 0x62, 0x64))
+    [System.IO.File]::WriteAllBytes((Join-Path $fixtures "pyi_probe.bin"), $pyi)
+    Assert "夹具就绪 (8 探针 + 1 良性)" ((Get-ChildItem $fixtures).Count -eq 9)
 
     # ---- 3) 离线扫描 (使用特征包) ----
     Write-Host "[3] 离线扫描 --pack 特征包..."
@@ -89,6 +135,10 @@ try {
     Assert "Evasion_UUID_Shellcode 命中" ($out -match "Evasion_UUID_Shellcode")
     Assert "Evasion_AMSI_Patch 命中" ($out -match "Evasion_AMSI_Patch")
     Assert "Evasion_Syscall_Stubs 命中" ($out -match "Evasion_Syscall_Stubs")
+    Assert "SilverFox_KbOut_Dropper 命中" ($out -match "SilverFox_KbOut_Dropper")
+    Assert "SilverFox_SafeCenter 命中" ($out -match "SilverFox_SafeCenter")
+    Assert "SilverFox_Ghost_Family 命中" ($out -match "SilverFox_Ghost_Family")
+    Assert "PyInstaller 内嵌 PE 载荷检出" ($out -match "PyInstaller-Embedded-PE")
     Assert "良性文件无检出" (-not ($out -match "\[x\].*benign\.txt"))
     Assert "HTML 报告已生成" ((Test-Path $reportHtml) -and ((Get-Item $reportHtml).Length -gt 200))
 

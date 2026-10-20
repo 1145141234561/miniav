@@ -74,6 +74,23 @@ def _synth_pe(dos_payload=b"", rwx=True):
     return hdr + pad + body
 
 
+def _synth_pyi(entries):
+    """合成最小 PyInstaller onefile CArchive（payload + TOC + 88B cookie）。"""
+    import struct
+    toc = b""
+    for name, typ in entries:
+        nb = name.encode("utf-8")
+        elen = 18 + len(nb)
+        toc += struct.pack("!IIIIBc", elen, 0, 0x100, 0x200, 1,
+                           typ.encode("ascii")) + nb
+    payload = b"PYDUMMYDATA" * 64
+    pkg_len = len(payload) + len(toc) + 88
+    cookie = (b"MEI\x0c\x0b\x0a\x0b\x0e"
+              + struct.pack("!IIII", pkg_len, len(payload), len(toc), 314)
+              + b"python314.dll".ljust(64, b"\x00"))
+    return payload + toc + cookie
+
+
 def run(db):
     sample_dir = Path(os.environ.get("TEMP", ".")) / "miniantivirus_samples"
     sample_dir.mkdir(exist_ok=True)
@@ -1059,6 +1076,108 @@ def run(db):
               f"命中={[h['name'] for h in r_aw['hits'] if 'Fox' in h['name']]}")
     except Exception as exc:
         check("银狐实战反制", False, f"异常: {exc}")
+
+    # 29) 银狐离线扫描增强：PyInstaller TOC 结构启发 + 巨型 hex 常量 + 行为链组合
+    try:
+        from .pyinst import parse_toc, pyinst_findings
+
+        # 29a) 归档内嵌可执行载荷条目（.exe）→ PyInstaller-Embedded-PE
+        p_pyi = sample_dir / "pyi_embed.bin"
+        p_pyi.write_bytes(_synth_pyi([("main.py", "s"), ("setup.exe", "b"),
+                                      ("config.json", "d")]))
+        fds_pyi = scan_file(p_pyi, db)
+        check("PyInstaller 结构: 内嵌 PE 载荷检出",
+              any(fd["name"] == "PyInstaller-Embedded-PE" for fd in fds_pyi),
+              next((fd["name"] for fd in fds_pyi
+                    if fd["name"].startswith("PyInstaller-") and
+                    fd["name"] != "PyInstaller-Embedded-PE"), "检出"))
+
+        # 29b) 正常捆绑（dll/pyd/data）不误报
+        p_ok2 = sample_dir / "pyi_benign.bin"
+        p_ok2.write_bytes(_synth_pyi([("main.py", "s"), ("python314.dll", "b"),
+                                      ("base_library.zip", "d")]))
+        fds_ok2 = scan_file(p_ok2, db)
+        check("PyInstaller 结构: 正常捆绑不误报",
+              not any(fd["name"].startswith("PyInstaller-") for fd in fds_ok2),
+              f"检出={[fd['name'] for fd in fds_ok2]}")
+
+        # 29c) TOC 解析器往返一致（防 helper 自身写错布局）
+        entries, pylib = parse_toc(_synth_pyi([("kb_out_W.P.S.50.513", "s")]))
+        check("PyInstaller TOC 解析器往返一致",
+              entries is not None and pylib == "python314.dll"
+              and entries[0][0] == "kb_out_W.P.S.50.513" and entries[0][1] == "s",
+              f"entries={entries} pylib={pylib!r}")
+
+        # 29d) 巨型 hex 常量（40KB → medium）
+        p_hex1 = sample_dir / "hex_probe.py"
+        p_hex1.write_text("blob = '" + "0123456789abcdef" * 2560 + "'\n",
+                          encoding="ascii")
+        fds_h1 = scan_file(p_hex1, db, ScanContext())
+        check("巨型 hex 常量: 40KB 级检出 (medium)",
+              any(fd["name"] == "Hex-Blob-Dropper" and fd["level"] == "medium"
+                  for fd in fds_h1),
+              f"检出={[fd['name'] for fd in fds_h1]}")
+
+        # 29e) 巨型 hex 常量（1MB+ → high）
+        p_hex2 = sample_dir / "hex_big_probe.py"
+        p_hex2.write_text("blob = '" + "0f1e2d3c4b5a6978" * 131072 + "'\n",
+                          encoding="ascii")
+        fds_h2 = scan_file(p_hex2, db, ScanContext())
+        check("巨型 hex 常量: 1MB 级检出 (high)",
+              any(fd["name"] == "Hex-Blob-Dropper" and fd["level"] == "high"
+                  for fd in fds_h2),
+              f"检出={[fd['name'] for fd in fds_h2]}")
+
+        # 29f) 正常脚本无 hex 常量不误报
+        p_hex3 = sample_dir / "hex_clean.py"
+        p_hex3.write_text("print('hello world')\n", encoding="ascii")
+        fds_h3 = scan_file(p_hex3, db, ScanContext())
+        check("巨型 hex 常量: 普通脚本不误报",
+              not any(fd["name"] == "Hex-Blob-Dropper" for fd in fds_h3),
+              f"检出={[fd['name'] for fd in fds_h3]}")
+
+        # 29g) 行为链组合: 远控滥用通道 + 动态执行
+        p_ch1 = sample_dir / "awesun_chain.ps1"
+        p_ch1.write_text("# fixture (never executed)\n"
+                         "Start-Process C:\\AweSun\\AweSun.exe\n"
+                         "import subprocess\n"
+                         "subprocess.run(['C:\\\\AweSun\\\\setup.exe'],"
+                         " capture_output=True)\n", encoding="utf-8")
+        r_ch1 = sandbox.analyze(p_ch1)
+        check("银狐组合: AweSun+动态执行链判恶意",
+              r_ch1["verdict"] == "恶意"
+              and any(h["name"] == "SBX-Combo" and "载荷执行" in h["desc"]
+                      for h in r_ch1["hits"]),
+              f"判定={r_ch1['verdict']} 评分={r_ch1['score']}")
+
+        # 29h) 行为链组合: NSudo 提权 + 公共目录投递
+        p_ch2 = sample_dir / "nsudo_chain.ps1"
+        p_ch2.write_text("# fixture (never executed)\n"
+                         "Start-Process %PUBLIC%\\payload.exe\n"
+                         "NSudo -U:T -P:E cmd /c %PUBLIC%\\pay" + "load.exe\n",
+                         encoding="utf-8")
+        r_ch2 = sandbox.analyze(p_ch2)
+        check("银狐组合: NSudo+公共投递链判恶意",
+              r_ch2["verdict"] == "恶意"
+              and any(h["name"] == "SBX-Combo" and "对抗提权" in h["desc"]
+                      for h in r_ch2["hits"]),
+              f"判定={r_ch2['verdict']} 评分={r_ch2['score']}")
+
+        # 29i) 自身安全: 本机 frozen MiniAV.exe（签名 onefile）TOC 可解析且不误报
+        dist_exe = Path(__file__).resolve().parent.parent / "dist" / "MiniAV.exe"
+        if dist_exe.exists():
+            tail = dist_exe.read_bytes()[-8 * 1024 * 1024:]
+            r_entries, r_pylib = parse_toc(tail)
+            check("PyInstaller 结构: 自身 frozen exe 不误报",
+                  r_entries is not None and r_pylib.startswith("python")
+                  and pyinst_findings(tail) == [],
+                  f"条目={None if r_entries is None else len(r_entries)} "
+                  f"pylib={r_pylib!r} findings={pyinst_findings(tail)}")
+        else:
+            check("PyInstaller 结构: 自身 frozen exe 不误报", True,
+                  "（dist\\MiniAV.exe 不存在，跳过）")
+    except Exception as exc:
+        check("银狐离线扫描增强", False, f"异常: {exc}")
 
     ok_all = all(results)
     print(f"\n[i] 自检{'全部通过' if ok_all else '存在失败项'}。")

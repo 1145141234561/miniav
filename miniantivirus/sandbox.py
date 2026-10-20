@@ -164,6 +164,10 @@ COMBO_RULES = [
      "公共目录释放 + 仿冒系统进程 = 银狐典型投递落地链"),
     (frozenset({"SBX-Fox-Ghost", "SBX-Persistence"}), 2,
      "远控特征 + 持久化 = 银狐驻留链"),
+    (frozenset({"SBX-Fox-AweSun", "SBX-Dynamic-Exec"}), 2,
+     "远控滥用通道 + 动态执行 = 银狐载荷执行链"),
+    (frozenset({"SBX-Priv-NSudo", "SBX-Fox-PublicDrop"}), 2,
+     "提权白工具 + 公共目录投递 = 银狐对抗提权链"),
 ]
 
 # oletools 提取出的宏代码会与文件文本合并分析

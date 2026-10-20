@@ -38,6 +38,9 @@ _ANALYSIS_ARTIFACTS = (b"sbiedll.dll", b"vboxservice.exe", b"vboxtray.exe", b"vm
                        b"vmwareuser.exe", b"qemu-ga", b"cuckoo", b"ollydbg", b"x64dbg",
                        b"cheatengine", b"wireshark", b"fiddler")
 
+# 巨型 hex 常量（≥32K 字符的连续 [0-9a-fA-F] 串）——hex 编码载荷释放器标志
+_HEX_RUN = re.compile(rb"[0-9a-fA-F]{32768,}")
+
 _RULES_CACHE = {}
 
 CACHE_FILE = Path(__file__).resolve().parent.parent / "scan_cache.json"
@@ -409,6 +412,27 @@ def emu_findings(data, db, ctx):
     return out
 
 
+def hex_blob_findings(data):
+    """巨型十六进制常量检测（银狐 core 手法：脚本常量内嵌 hex 编码的
+    PE 载荷，运行时 bytes.fromhex 落地执行；对源码/pyc/还原 blob 场景
+    通用）。仅报存在性，需人工研判。"""
+    window = data[:16 * 1024 * 1024]
+    if len(data) > 20 * 1024 * 1024:
+        window += data[-4 * 1024 * 1024:]
+    for m in _HEX_RUN.finditer(window):
+        blob = m.group(0)
+        if len(set(blob[:256])) < 8:      # 单一/极窄字符填充（如哈希表占位）不算
+            continue
+        size = len(blob)
+        size_txt = (f"{size / 1048576:.1f} MB" if size >= 1048576
+                    else f"{size // 1024} KB")
+        return [{"name": "Hex-Blob-Dropper",
+                 "level": "high" if size >= 1048576 else "medium",
+                 "detail": f"检测到 {size_txt} 超长十六进制常量串"
+                           "（hex 编码载荷释放器典型手法，需人工研判）"}]
+    return []
+
+
 def content_findings(data, db, ctx=None):
     """对一段字节内容做模式/EICAR/YARA 检测（供文件与压缩包条目复用）。"""
     findings = []
@@ -507,12 +531,20 @@ def scan_file(path, db, ctx=None):
     except OSError:
         return findings
     findings += content_findings(data, db, ctx)
+    try:
+        from .pyinst import pyinst_findings
+        findings += pyinst_findings(data)
+    except Exception as exc:
+        findings.append({"name": "PyInst-Error", "level": "low",
+                         "detail": f"PyInstaller 结构解析异常（已跳过）: {exc}"})
     if ctx.deobf and not findings:
         try:
             findings += deobf_findings(data, db, ctx)
         except Exception as exc:
             findings.append({"name": "Deobf-Error", "level": "low",
                              "detail": f"解混淆引擎异常（已跳过）: {exc}"})
+        if not findings:
+            findings += hex_blob_findings(data)
     if data[:2] == b"PK":
         from .archive import scan_zip
         try:
