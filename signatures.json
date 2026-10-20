@@ -49,6 +49,38 @@
       "9c156e73312853a85299faf28722113fe28e02dacbea3d3855fb256cafc735a4": {
         "name": "SilverFox-XPSPLOG-Sideload",
         "level": "high"
+      },
+      "b4c702dae67c4f982c2012eb75ef25c485dbadd0bf1520c5d074cadb7e43e8b9": {
+        "name": "SilverFox6-WPS-Install-MSI",
+        "level": "high"
+      },
+      "dfb0e8bbf15a79781cdc295aff3ba2d8e3fe28a023ec06ff3d7279e8918f9e18": {
+        "name": "SilverFox6-Stage-MSI-2",
+        "level": "high"
+      },
+      "fce8bcfd298b13403f37078d8d87f2962aee96408af404e11e2c6f9210f1e42f": {
+        "name": "SilverFox6-Stage-MSI-3",
+        "level": "high"
+      },
+      "86c91b557f889ee53b8f81831c4cbee8f253aac4ea8c320536a2aeda3a219b20": {
+        "name": "SilverFox6-Stage-MSI-4",
+        "level": "high"
+      },
+      "9b20a48601850c0c845af1cc29cad6f083b6b17195fec58387d1ff610b9dd030": {
+        "name": "SilverFox6-ThreadCtx-Injector",
+        "level": "high"
+      },
+      "7cd8c48226b41a2cddb2f137ca93222e534a734b59482a55dde5ce9f7bce0251": {
+        "name": "SilverFox6-Enc-Payload-Stz",
+        "level": "high"
+      },
+      "b40f6eca0632f30437e5397ebe27007f14c51cfe5031118f7d67e602efd44ae6": {
+        "name": "SilverFox6-NSIS-Uninstaller",
+        "level": "high"
+      },
+      "623b308ddcf2f11db3a87763c662a23d0dfb754d02a88771fd7cda6d6f635495": {
+        "name": "SilverFox6-Chrome64-MonKeyDu-MSI",
+        "level": "high"
       }
     },
     "md5": {
@@ -78,6 +110,38 @@
       },
       "081d7df0ba4cc17b5f4d7613316c11bf": {
         "name": "SilverFox-InstApp-Zip",
+        "level": "high"
+      },
+      "b1bdd225649a9ff430753fdc4de24449": {
+        "name": "SilverFox6-WPS-Install-MSI",
+        "level": "high"
+      },
+      "43685e4ffb00314d3d550f3f20f83f62": {
+        "name": "SilverFox6-Stage-MSI-2",
+        "level": "high"
+      },
+      "098813e97d2364affd8442aa5aa22d7c": {
+        "name": "SilverFox6-Stage-MSI-3",
+        "level": "high"
+      },
+      "b791939bdce204e3be665b9a49422b20": {
+        "name": "SilverFox6-Stage-MSI-4",
+        "level": "high"
+      },
+      "a85cb5398adabc67bd69894ef1114322": {
+        "name": "SilverFox6-ThreadCtx-Injector",
+        "level": "high"
+      },
+      "e1eb84a0ba11b001e1506cae7f57368a": {
+        "name": "SilverFox6-Enc-Payload-Stz",
+        "level": "high"
+      },
+      "a73f865176bfa3cf9b05afd81b187315": {
+        "name": "SilverFox6-NSIS-Uninstaller",
+        "level": "high"
+      },
+      "efa3cfa63749b167e9f83254857414e5": {
+        "name": "SilverFox6-Chrome64-MonKeyDu-MSI",
         "level": "high"
       }
     },
@@ -113,6 +177,12 @@
       "data": "stratum\\+(tcp|ssl)://\\S+",
       "name": "Coin-Miner-Pool-Config",
       "level": "medium"
+    },
+    {
+      "type": "regex",
+      "data": "dllsystem\\.(io|net)",
+      "name": "SilverFox-DllSystem-Domain",
+      "level": "high"
     }
   ],
   "exclusions": [

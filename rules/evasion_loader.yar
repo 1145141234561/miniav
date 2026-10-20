@@ -18,7 +18,7 @@ rule Evasion_UUID_Shellcode {
         $c1 = "UuidFromString" ascii nocase
         $c2 = "UuidToString" ascii nocase
     condition:
-        #uuid > 24 or (any of ($c*) and #uuid > 4)
+        #uuid * 1024 > filesize or (any of ($c*) and #uuid > 4)
 }
 
 rule Evasion_IPfuscation {
