@@ -21,6 +21,18 @@
       "8256f182081d88ce8c87799c0293bdf7dd982d269d9dff2bb8ccc31826583605": {
         "name": "SilverFox-Abused-AweSun",
         "level": "high"
+      },
+      "ae1756b8c04b5da47051967bea787b34e8c3027a447f4009b2f58ffa8f92a061": {
+        "name": "GrayTool-AllKill-Main",
+        "level": "high"
+      },
+      "04667bacbed03ebfe85758e5112e92de0a12ac1ff1c932907d405bb68650e46c": {
+        "name": "GrayTool-AllKill-Installer",
+        "level": "high"
+      },
+      "80e971b5caa2ae61a275c2d6471ca22dd25288581b6e40c500a4478c24c02981": {
+        "name": "Abused-Bundled-NSudo",
+        "level": "high"
       }
     },
     "md5": {
@@ -34,6 +46,18 @@
       },
       "63895df57079260a8f13a2918a35c867": {
         "name": "SilverFox-Abused-AweSun",
+        "level": "high"
+      },
+      "c09098eadea1b47de6d3479348394fed": {
+        "name": "GrayTool-AllKill-Main",
+        "level": "high"
+      },
+      "bfedde8a11615972f3e27a6774503095": {
+        "name": "GrayTool-AllKill-Installer",
+        "level": "high"
+      },
+      "82c40094d63638440878889225bf17a1": {
+        "name": "Abused-Bundled-NSudo",
         "level": "high"
       }
     },

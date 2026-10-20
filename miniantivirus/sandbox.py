@@ -129,6 +129,10 @@ RULES = [
     ("SBX-Fox-AweSun",
      re.compile(r"(?i)(C:\\AweSun|AweSun\.exe|SafeCenterController)"), 2,
      "银狐：向日葵远控（AweSun）被滥用通道 / SafeCenter 控制器组件"),
+    ("SBX-Priv-NSudo",
+     re.compile(r"(?i)(nsudo\s+-u\s*:\s*t|nsudo\s+-p\s*:\s*e|"
+                r"-u\s*:\s*t\s+-p\s*:\s*e)"), 2,
+     "NSudo TrustedInstaller 提权执行（白工具滥用，常见杀软对抗/银狐投递）"),
 ]
 
 # 行为组合加分：单一特征危害有限，组合出现时危害倍增
