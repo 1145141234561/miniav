@@ -91,3 +91,111 @@ rule SilverFox_Sideload_Chain
     condition:
         uint16(0) == 0x5A4D and 1 of ($*)
 }
+
+/* ==================== 多态泛化层 ====================
+    设计原则：字面串（域名/目录/变量名）重编译即可替换，锚定成本最低；
+    生成器指纹（模板属性）、功能性 API 组合、滥用模式在变形后仍保留。
+    本层规则锚定后者，与前述字面层规则互补。 */
+
+/*
+    生成器指纹：银狐黑产安装器生成器固定的厂商属性名。
+    产品名随仿冒目标变（WPS/Chrome/FinalShell...），厂商名不改。
+    门 = PE 或 MSI（OLE 复合文档 magic D0CF11E0）。
+*/
+rule SilverFox_SpoofInstaller_Gen
+{
+    meta:
+        family = "SilverFox/Installer-Gen"
+        level = "medium"
+        source = "silverfox"
+        note = "变形抗性：仿冒目标可换，生成器厂商属性不变"
+    strings:
+        $v1 = "MonKeyDu" ascii wide nocase
+        $v2 = "KingDialog" ascii wide nocase
+    condition:
+        (uint16(0) == 0x5A4D or uint32(0) == 0xE011CFD0) and 1 of ($v*)
+}
+
+/*
+    功能结构锚：线程上下文注入全套 API（挂起→改上下文→恢复 + 内存分配）。
+    功能决定导入表，重编译/换壳/改串都不变；合法软件极少同时具备四件。
+    命中 ProgramPolicy.exe（23MB 32 位注入器）验证。
+*/
+rule SilverFox_ThreadCtx_Inject
+{
+    meta:
+        family = "SilverFox/Loader-Gen"
+        level = "medium"
+        source = "silverfox"
+        note = "变形抗性：API 组合由功能决定，多态重编译不变"
+    strings:
+        $a1 = "SuspendThread" ascii
+        $a2 = "SetThreadContext" ascii
+        $a3 = "ResumeThread" ascii
+        $a4 = "VirtualAlloc" ascii
+    condition:
+        uint16(0) == 0x5A4D and all of ($a*)
+}
+
+/*
+    基础设施泛化：云对象存储 C2 + 投递上下文双锚。
+    具体 bucket 域名随批次换，但 OSS 托管 + Public/Downloads 投递
+    的组合模式不变；正常软件嵌 OSS 下载域时无投递路径伴生。
+*/
+rule SilverFox_OSS_C2_Gen
+{
+    meta:
+        family = "SilverFox/Infra-Gen"
+        level = "medium"
+        source = "silverfox"
+        note = "变形抗性：bucket 换名成本低，托管+投递组合模式成本高"
+    strings:
+        $oss = /oss-cn-[a-z0-9]+\.aliyuncs\.com/ ascii wide nocase
+        $p1 = "Users\\Public\\" ascii wide nocase
+        $p2 = "Downloads\\" ascii wide nocase
+        $t1 = "kb_out_" ascii
+    condition:
+        uint16(0) == 0x5A4D and $oss and 1 of ($p*, $t1)
+}
+
+/*
+    合法远控滥用模式：向日葵/Sunlogin + 静默执行逻辑同体。
+    合法安装包本体只含品牌串、无执行编排代码；释放器同时具备
+    两者——哈希随版本更新失效，模式锚持续有效。
+*/
+rule SilverFox_AweSun_Abuse
+{
+    meta:
+        family = "SilverFox/RAT-Abuse"
+        level = "high"
+        source = "silverfox"
+        note = "变形抗性：远控版本更新换哈希，滥用编排模式不变"
+    strings:
+        $s1 = "AweSun" ascii wide nocase
+        $s2 = "SunloginClient" ascii wide nocase
+        $x1 = "RunExeThread" ascii
+        $x2 = /subprocess\.run|WinExec|ShellExecute/ ascii nocase
+    condition:
+        uint16(0) == 0x5A4D and 1 of ($s*) and 1 of ($x*)
+}
+
+/*
+    投递行为泛化：公共目录释放 + 随机名可执行/持久化动词。
+    随机目录名每批不同（正则泛化），「公共目录+随机 exe/schtasks」
+    的行为结构不变。
+*/
+rule SilverFox_StageDrop_Public
+{
+    meta:
+        family = "SilverFox/Drop-Gen"
+        level = "medium"
+        source = "silverfox"
+        note = "变形抗性：随机名每批变，公共目录投递结构不变"
+    strings:
+        $p1 = "Users\\Public\\" ascii wide nocase
+        $e1 = /[A-Za-z0-9]{4,10}\\[A-Za-z0-9]{3,10}\.exe/ ascii wide
+        $d1 = "schtasks" ascii nocase
+        $d2 = "reg add" ascii nocase
+    condition:
+        uint16(0) == 0x5A4D and $p1 and 1 of ($e*, $d*)
+}

@@ -1263,6 +1263,114 @@ def run(db):
     except Exception as exc:
         check("银狐 instapp 链反制", False, f"异常: {exc}")
 
+    # ==================== 第 31 组：银狐多态泛化层 ====================
+    # 锚定变形后仍保留的特征（生成器指纹/功能性 API 组合/架构模式），
+    # 全部使用合成探针，不执行任何真实样本。
+    try:
+        import yara  # noqa: F401
+        _gen_has_yara = True
+    except ImportError:
+        _gen_has_yara = False
+    try:
+        gen_dir = sample_dir / "gen_probes"
+        gen_dir.mkdir(exist_ok=True)
+        if _gen_has_yara:
+            ctx_g = ScanContext(rules_paths=rules)
+
+            # 31a) MSI OLE 门 + 生成器厂商属性 → SpoofInstaller_Gen
+            # （仿冒产品名可换，生成器厂商属性不变）
+            p_gen = gen_dir / "spoof_installer.msi"
+            p_gen.write_bytes(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 2048
+                              + "MonKeyDu".encode("utf-16-le"))
+            fds_gen = scan_file(p_gen, db, ctx_g)
+            check("银狐泛化层: MSI 生成器指纹检出",
+                  any(fd["name"] == "SilverFox_SpoofInstaller_Gen"
+                      for fd in fds_gen),
+                  next((fd["name"] for fd in fds_gen
+                        if fd["name"].startswith("SilverFox")), ""))
+
+            # 31b) 线程上下文注入 API 四件套 → ThreadCtx_Inject
+            # （功能决定导入表，重编译不变）
+            p_tci = gen_dir / "tci_probe.bin"
+            p_tci.write_bytes(b"MZ" + b"\x90" * 40
+                              + b"SuspendThread SetThreadContext"
+                              + b" ResumeThread VirtualAlloc")
+            fds_tci = scan_file(p_tci, db, ctx_g)
+            check("银狐泛化层: 线程上下文注入 API 组合检出",
+                  any(fd["name"] == "SilverFox_ThreadCtx_Inject"
+                      for fd in fds_tci),
+                  next((fd["name"] for fd in fds_tci
+                        if fd["name"].startswith("SilverFox")), ""))
+
+            # 31c) OSS 正则 + 投递路径双锚 → OSS_C2_Gen
+            # （bucket 换名成本低，托管+投递组合是架构决策）
+            p_oss = gen_dir / "oss_c2.bin"
+            p_oss.write_bytes(b"MZ" + b"\x90" * 30
+                              + b"https://abc123.oss-cn-qingdao.aliyuncs.com/p"
+                              + b"C:\\Users\\Public\\xY7kQ2\\ldr.exe")
+            fds_oss = scan_file(p_oss, db, ctx_g)
+            check("银狐泛化层: OSS 托管+投递双锚检出",
+                  any(fd["name"] == "SilverFox_OSS_C2_Gen" for fd in fds_oss),
+                  next((fd["name"] for fd in fds_oss
+                        if fd["name"].startswith("SilverFox")), ""))
+
+            # 31d) 远控品牌串 与 执行编排代码同体 → AweSun_Abuse
+            # （合法安装包无编排代码，释放器必兼有）
+            p_ab = gen_dir / "abuse_probe.bin"
+            p_ab.write_bytes(b"MZ" + b"\x90" * 30
+                             + b"C:\\AweSun\\setup.exe RunExeThread")
+            fds_ab = scan_file(p_ab, db, ctx_g)
+            check("银狐泛化层: 远控滥用模式检出",
+                  any(fd["name"] == "SilverFox_AweSun_Abuse" for fd in fds_ab),
+                  next((fd["name"] for fd in fds_ab
+                        if fd["name"].startswith("SilverFox")), ""))
+
+            # 31e) 公共目录 + 随机名可执行 → StageDrop_Public
+            # （随机名每批变，公共目录投递结构不变）
+            p_sd = gen_dir / "stage_drop.bin"
+            p_sd.write_bytes(b"MZ" + b"\x90" * 30
+                             + b"C:\\Users\\Public\\nT4mR9\\aB3xK7.exe")
+            fds_sd = scan_file(p_sd, db, ctx_g)
+            check("银狐泛化层: 公共目录投递结构检出",
+                  any(fd["name"] == "SilverFox_StageDrop_Public"
+                      for fd in fds_sd),
+                  next((fd["name"] for fd in fds_sd
+                        if fd["name"].startswith("SilverFox")), ""))
+
+            # 31f) 合法远控本体（品牌串、无执行编排代码）不误报
+            p_ras = gen_dir / "benign_rat.bin"
+            p_ras.write_bytes(b"MZ" + b"\x90" * 40
+                              + b"AweSun Remote Assistance"
+                              + b" SunloginClient setup")
+            fds_ras = scan_file(p_ras, db, ctx_g)
+            check("银狐泛化层: 合法远控本体不误报",
+                  not any(fd["name"].startswith("SilverFox") for fd in fds_ras),
+                  f"检出={[fd['name'] for fd in fds_ras
+                              if fd['name'].startswith('SilverFox')]}")
+
+            # 31g) 分析报告文本（泛化特征串齐备、无 MZ/OLE 门）不误报
+            p_rep3 = gen_dir / "gen_report.txt"
+            p_rep3.write_text(
+                "报告：样本使用 MonKeyDu 厂商属性、SuspendThread/SetThreadContext/"
+                "ResumeThread/VirtualAlloc 注入、oss-cn-hangzhou.aliyuncs.com C2、"
+                "Users\\Public 投递、schtasks 持久化。\n", encoding="utf-8")
+            fds_rep3 = scan_file(p_rep3, db, ctx_g)
+            check("银狐泛化层: 分析报告文本不误报",
+                  not any(fd["name"].startswith("SilverFox") for fd in fds_rep3),
+                  f"检出={[fd['name'] for fd in fds_rep3
+                              if fd['name'].startswith('SilverFox')]}")
+        else:
+            for nm in ("银狐泛化层: MSI 生成器指纹检出",
+                       "银狐泛化层: 线程上下文注入 API 组合检出",
+                       "银狐泛化层: OSS 托管+投递双锚检出",
+                       "银狐泛化层: 远控滥用模式检出",
+                       "银狐泛化层: 公共目录投递结构检出",
+                       "银狐泛化层: 合法远控本体不误报",
+                       "银狐泛化层: 分析报告文本不误报"):
+                check(nm, True, "（未安装 yara-python，跳过）")
+    except Exception as exc:
+        check("银狐多态泛化层", False, f"异常: {exc}")
+
     ok_all = all(results)
     print(f"\n[i] 自检{'全部通过' if ok_all else '存在失败项'}。")
     return 0 if ok_all else 1
