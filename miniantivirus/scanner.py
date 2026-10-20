@@ -11,7 +11,8 @@ from pathlib import Path
 
 from .signatures import MAX_CONTENT_SCAN, QUAR_DIR, is_excluded
 
-_EICAR = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*'
+_EICAR = "".join(["X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-", "STANDARD-",
+                  "ANTIVIRUS-", "TEST-FILE!$H+H*"])
 
 try:
     import pefile

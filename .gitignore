@@ -22,6 +22,8 @@ __pycache__/
 # ---- 运行时缓存 / 日志 / 报告 ----
 scan_cache.json
 scan_cache.json.tmp
+guard_state.json
+guard_state.json.tmp
 vt_cache.json
 scan.log
 audit.log

@@ -4,6 +4,8 @@ import argparse
 import io
 import os
 import shutil
+import subprocess
+import sys
 import threading
 import time
 import zipfile
@@ -82,8 +84,9 @@ def run(db):
         print(f"  [{'OK' if ok else 'FAIL'}] {name}" + (f"  {note}" if note else ""))
 
     # 1) EICAR 标准测试文件（若被真实杀软实时拦截/删除，同样证明防护链路有效）
-    eicar = ("X5O!P%@AP[4\\PZX54(P^)7CC)7}$"
-             "EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*")
+    # 运行时拼接：源码与字节码中不落完整 EICAR 测试串（防真实杀软删源文件）
+    eicar = "".join(["X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-", "STANDARD-",
+                     "ANTIVIRUS-", "TEST-FILE!$H+H*"])
     p_eicar = sample_dir / "eicar.com"
     try:
         p_eicar.write_text(eicar)
@@ -523,6 +526,116 @@ def run(db):
     check("PE 启发式: 反沙箱痕迹检出",
           bool(heur2) and "反沙箱" in heur2["detail"],
           (heur2 or {}).get("detail", "")[:72])
+
+    # 22) 用户态进程自保护：DACL 加固/恢复 + 双进程互守护逻辑
+    try:
+        from . import processguard
+        app_root = Path(__file__).resolve().parent.parent
+
+        # 22a) DACL 端到端：子进程加固 → 外部不可终止 → 恢复 → 可访问
+        flag = sample_dir / "pg_restore.flag"
+        if flag.exists():
+            flag.unlink()
+        child_code = (
+            "import os, sys, time\n"
+            f"sys.path.insert(0, r'{app_root}')\n"
+            "from miniantivirus import processguard\n"
+            "processguard.harden_self()\n"
+            "print('READY', flush=True)\n"
+            f"f = r'{flag}'\n"
+            "t0 = time.time()\n"
+            "while not os.path.exists(f) and time.time() - t0 < 20:\n"
+            "    time.sleep(0.2)\n"
+            "processguard.restore_self()\n"
+            "print('RESTORED', flush=True)\n"
+            "time.sleep(3)\n")
+        proc = subprocess.Popen([sys.executable, "-c", child_code],
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True)
+        line = proc.stdout.readline().strip()
+        probe_hard = processguard.is_hardened(proc.pid)
+        hard_ok = line == "READY" and probe_hard is True
+        flag.write_text("go", encoding="utf-8")
+        line2 = proc.stdout.readline().strip()
+        probe_rest = processguard.is_hardened(proc.pid)
+        restore_ok = line2 == "RESTORED" and probe_rest is False
+        check("用户态自保护: DACL 加固后外部不可终止", hard_ok,
+              f"加固后探测={probe_hard}")
+        check("用户态自保护: DACL 恢复后可正常访问", restore_ok,
+              f"恢复后探测={probe_rest}")
+        try:
+            proc.wait(timeout=8)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+    except Exception as exc:
+        check("用户态自保护: DACL 端到端", False, f"异常: {exc}")
+
+    # 22b) 守护进程：检测主进程死亡并拉起新实例 + 检测换代自动退役
+    try:
+        st_path = sample_dir / "guard_state_test.json"
+        victim = subprocess.Popen([sys.executable, "-c",
+                                   "import time; time.sleep(15)"])
+        flag2 = sample_dir / "pg_revive.flag"
+        if flag2.exists():
+            flag2.unlink()
+        processguard.write_state(
+            {"main_pid": victim.pid, "guard_pid": None, "gen": 1,
+             "stop": False, "hardened": False, "watch_dir": "",
+             "restart_cmd": [sys.executable, "-c",
+                             f"open(r'{flag2}', 'w').close()"],
+             "cwd": str(sample_dir)},
+            path=st_path)
+        t = threading.Thread(target=processguard.worker_loop,
+                             args=(str(st_path),), daemon=True)
+        t.start()
+        victim.kill()
+        victim.wait(timeout=5)
+        t.join(timeout=6)
+        revived = False
+        for _ in range(20):  # 新实例进程启动需数百 ms，轮询等待复活标记
+            if flag2.exists():
+                revived = True
+                break
+            time.sleep(0.2)
+        check("用户态自保护: 守护检测死亡并拉起新实例",
+              (not t.is_alive()) and revived,
+              f"线程存活={t.is_alive()} 复活标记={revived}")
+
+        victim2 = subprocess.Popen([sys.executable, "-c",
+                                    "import time; time.sleep(15)"])
+        processguard.write_state(
+            {"main_pid": victim2.pid, "guard_pid": None, "gen": 2,
+             "stop": False, "hardened": False, "watch_dir": "",
+             "restart_cmd": [], "cwd": str(sample_dir)},
+            path=st_path)
+        t2 = threading.Thread(target=processguard.worker_loop,
+                              args=(str(st_path),), daemon=True)
+        t2.start()
+        time.sleep(0.4)
+        cur = processguard.read_state(st_path)
+        cur["main_pid"] = victim2.pid + 999999  # 模拟新一代主进程接管
+        processguard.write_state(cur, path=st_path)
+        t2.join(timeout=4)
+        check("用户态自保护: 守护检测换代自动退役", not t2.is_alive())
+        try:
+            victim2.kill()
+            victim2.wait(timeout=3)
+        except Exception:
+            pass
+        try:
+            st_path.unlink()
+        except OSError:
+            pass
+    except Exception as exc:
+        check("用户态自保护: 守护逻辑", False, f"异常: {exc}")
+
+    # 22c) status 接口冒烟（未运行状态优雅输出不崩溃）
+    try:
+        rc = processguard.guard_status(
+            state_path=str(sample_dir / "no_such_state.json"))
+        check("用户态自保护: status 接口冒烟", rc == 0)
+    except Exception as exc:
+        check("用户态自保护: status 接口冒烟", False, f"异常: {exc}")
 
     ok_all = all(results)
     print(f"\n[i] 自检{'全部通过' if ok_all else '存在失败项'}。")

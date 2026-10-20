@@ -273,6 +273,21 @@ def cmd_guard(args):
     return 0 if not (res["modified"] or res["missing"]) else 1
 
 
+def cmd_defend(args):
+    """用户态进程自保护：DACL 加固 + 双进程互守护（无需驱动/管理员）。"""
+    from . import processguard
+    if args.defendcmd == "__worker":
+        processguard.worker_loop(getattr(args, "state", None))
+        return 0
+    if args.defendcmd == "start":
+        return processguard.run_daemonized(
+            watch_dir=getattr(args, "watch", None),
+            use_dacl=not getattr(args, "no_dacl", False))
+    if args.defendcmd == "stop":
+        return processguard.guard_stop()
+    return processguard.guard_status()
+
+
 def cmd_protect(args):
     """进程自保护：MiniAVProt 内核驱动剥离对受保护进程的危险句柄权限。"""
     from . import driverprotect
@@ -280,6 +295,8 @@ def cmd_protect(args):
         d2, err2 = driverprotect.ensure_loaded()
         if d2 is None:
             print(f"[!] 自动加载失败: {err2}")
+            print("    （Secure Boot 开启时测试签名驱动无法加载，"
+                  "可改用用户态方案: python -m miniantivirus defend start）")
             return 1
         print("[+] 驱动自动加载完成: " + ("已启用" if d2["enabled"] else "已停用"))
     try:
@@ -652,6 +669,24 @@ def build_parser():
     pp.add_argument("--install", action="store_true",
                     help="自动安装并启动驱动（需管理员，GUI 启动时亦自动执行）")
     pp.set_defaults(func=cmd_protect)
+
+    dp = sub.add_parser(
+        "defend",
+        help="用户态进程自保护：DACL 加固 + 双进程互守护（无需驱动/管理员）")
+    dsub = dp.add_subparsers(dest="defendcmd", required=True)
+    d1 = dsub.add_parser("start", help="以自保护模式常驻（加固自身 + 派生守护）")
+    d1.add_argument("--watch", metavar="DIR",
+                    help="常驻时顺带实时监视目录（默认仅驻留）")
+    d1.add_argument("--no-dacl", action="store_true",
+                    help="跳过 DACL 加固（仅互守护）")
+    d1.set_defaults(func=cmd_defend)
+    d2 = dsub.add_parser("stop", help="通知自保护常驻正常退出")
+    d2.set_defaults(func=cmd_defend)
+    d3 = dsub.add_parser("status", help="查看主/守护进程与加固状态")
+    d3.set_defaults(func=cmd_defend)
+    d4 = dsub.add_parser("__worker", help="内部：守护进程入口（勿手动调用）")
+    d4.add_argument("state", nargs="?", default=None)
+    d4.set_defaults(func=cmd_defend)
 
     gd = sub.add_parser("guard", help="自保护：完整性基线与篡改校验")
     gsub = gd.add_subparsers(dest="guardcmd", required=True)
