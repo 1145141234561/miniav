@@ -637,6 +637,82 @@ def run(db):
     except Exception as exc:
         check("用户态自保护: status 接口冒烟", False, f"异常: {exc}")
 
+    # 23) 免杀反制 II：IPv6fuscation / 十六进制转义 shellcode / MSF 前导 /
+    #     加密常量 / 反沙箱探针 / 签名伪造（YARA + 行为 + PE 启发式 + 签名细分）
+    if HAS_YARA and rules:
+        ctx_ev2 = ScanContext(rules_paths=rules)
+        p_ip6 = sample_dir / "ip6_probe.txt"
+        p_ip6.write_text("RtlIpv6StringToAddress(" + " ".join(
+            "2001:0db8:85a3:0000:0000:8a2e:0370:%04x" % i for i in range(48)) + ")", encoding="utf-8")
+        fds = scan_file(p_ip6, db, ctx_ev2)
+        check("YARA 反制 II: IPv6fuscation",
+              any(fd["name"] == "Evasion_IPv6fuscation" for fd in fds))
+
+        p_hex = sample_dir / "hexesc_probe.txt"
+        p_hex.write_text("unsigned char sc[] = \"" + "\\x90\\xfc\\xe8" * 120 + "\";",
+                         encoding="utf-8")
+        fds = scan_file(p_hex, db, ctx_ev2)
+        check("YARA 反制 II: 十六进制转义 shellcode",
+              any(fd["name"] == "Evasion_Hex_Escape_Shellcode" for fd in fds))
+
+        p_pr = sample_dir / "prologue_probe.bin"
+        p_pr.write_bytes(_synth_pe(dos_payload=b"\xfc\x48\x83\xe4\xf0" + b"VirtualAlloc\x00"))
+        fds = scan_file(p_pr, db, ctx_ev2)
+        check("YARA 反制 II: MSF/CS shellcode 前导",
+              any(fd["name"] == "Evasion_Shellcode_Prologue" for fd in fds))
+    else:
+        check("YARA 反制 II（IPv6/转义/前导）", True, "（未安装 yara-python，跳过）")
+
+    try:
+        from .scanner import pe_heuristics, signature_finding
+        p_crypto = sample_dir / "crypto_probe.bin"
+        p_crypto.write_bytes(_synth_pe(
+            dos_payload=b"\x63\x7c\x77\x7b\xf2\x6b\x6f\xc5", rwx=True))
+        heur3 = pe_heuristics(p_crypto.read_bytes())
+        check("PE 启发式 II: 加密常量+内存执行", bool(heur3) and "加密常量" in heur3["detail"],
+              (heur3 or {}).get("detail", "")[:72])
+
+        p_drop = sample_dir / "drop_probe.bin"
+        p_drop.write_bytes(_synth_pe(
+            dos_payload=b"C:\\Users\\Public\\1234567.txt"))
+        heur4 = pe_heuristics(p_drop.read_bytes())
+        check("PE 启发式 II: 反沙箱 drop 探针", bool(heur4) and "1234567.txt" in heur4["detail"],
+              (heur4 or {}).get("detail", "")[:72])
+
+        check("签名细分: 不受信根单列",
+              signature_finding("fail", 0x800B0109)["name"] == "Untrusted-Signature-Root")
+        check("签名细分: 其他失败保持 Authenticode-Fail",
+              signature_finding("fail", 0x80092003)["name"] == "Authenticode-Fail")
+        check("签名细分: valid 无检出", signature_finding("valid", 0) is None)
+    except Exception as exc:
+        check("PE 启发式 II / 签名细分", False, f"异常: {exc}")
+
+    try:
+        p_fs = sample_dir / "fake_sign_probe.ps1"
+        p_fs.write_text("# fake sign fixture\n"
+                        "signtool sign /f key.pfx loader.exe\n"
+                        "makecert -r -pe -n \"CN=Microsoft Corporation\" fake.cer\n",
+                        encoding="utf-8")
+        r_fs = sandbox.analyze(p_fs)
+        check("行为反制 II: 签名伪造特征",
+              any(h["name"] == "SBX-Fake-Signature" for h in r_fs["hits"]),
+              f"判定={r_fs['verdict']} 评分={r_fs['score']}")
+
+        p_as2 = sample_dir / "antisbx2_probe.ps1"
+        p_as2.write_text("# anti sandbox fixture\n"
+                         "Start-Sleep -m 8000\n"
+                         "Test-Path 'C:\\Users\\Public\\1234567.txt'\n"
+                         "$g = hellsgate; Direct-Syscall $g\n",
+                         encoding="utf-8")
+        r_as2 = sandbox.analyze(p_as2)
+        hit_names = {h["name"] for h in r_as2["hits"]}
+        check("行为反制 II: 反沙箱探针/长延时", "SBX-AntiSandbox" in hit_names)
+        check("行为反制 II: 反沙箱+直接系统调用组合",
+              r_as2["verdict"] == "恶意" and "SBX-Combo" in hit_names,
+              f"判定={r_as2['verdict']} 评分={r_as2['score']}")
+    except Exception as exc:
+        check("行为反制 II", False, f"异常: {exc}")
+
     ok_all = all(results)
     print(f"\n[i] 自检{'全部通过' if ok_all else '存在失败项'}。")
     return 0 if ok_all else 1

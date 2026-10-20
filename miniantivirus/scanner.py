@@ -278,11 +278,58 @@ def pe_heuristics(data):
     if arts >= 3:
         reasons.append(f"内嵌 {arts} 个分析环境痕迹字符串（反沙箱探测）")
         score += 1
+    # 免杀 Loader 专用沙箱 drop 探针（C:\Users\Public\1234567.txt，高置信 IOC）
+    if b"1234567.txt" in blob or b"1234567.txt" in wide:
+        reasons.append("内嵌反沙箱 drop 探针路径（users\\public\\1234567.txt，"
+                       "免杀 Loader 沙箱识别标记）")
+        score += 1
+    # 对称加密原语常量（AES S-box / TEA-XTEA delta / SM4 FK）+ 内存执行能力：
+    # 单独出现无意义（OpenSSL 等正常程序含 AES 常量），组合才有载荷解包语义
+    crypto_marks = []
+    if b"\x63\x7c\x77\x7b\xf2\x6b\x6f\xc5" in data[:2097152]:
+        crypto_marks.append("AES S-box")
+    if b"\xb9\x79\x37\x9e" in data[:2097152]:
+        crypto_marks.append("TEA/XTEA delta")
+    if b"\xc6\xba\xb1\xa3" in data[:2097152]:
+        crypto_marks.append("SM4 FK")
+    if crypto_marks and (rwx or {"alloc", "write", "exec"} <= set(cats)):
+        reasons.append("内置对称加密常量(" + ", ".join(crypto_marks) + ") 且具备内存执行能力"
+                       "（多层加密 Shellcode 解包典型组合）")
+        score += 1
+    # 仿冒可信厂商：版本资源声称 Microsoft 且节区高熵（签名伪造/伪装常见）
+    if b"microsoft corporation" in blob and max_ent > 7.5:
+        reasons.append("声称 Microsoft Corporation 且节区高熵 "
+                       f"({max_ent:.2f}/8，疑似仿冒可信厂商属性)")
+        score += 1
     if not reasons:
         return None
     return {"name": "PE-Heuristic-Suspect",
             "level": "high" if score >= 2 else "medium",
             "detail": "; ".join(reasons)}
+
+
+def signature_finding(cat, code, is_driver=False):
+    """把签名校验结果 (cat, code) 转换为检出条目；无可报时返回 None。
+
+    fail 细分：0x800B0109 (CERT_E_UNTRUSTEDROOT) 单列——签名结构存在但
+    证书链不受信，是自签名/伪造签名伪装可信程序的典型静态特征。
+    """
+    if cat == "fail":
+        if code == 0x800B0109:
+            return {"name": "Untrusted-Signature-Root", "level": "high",
+                    "detail": "签名存在但证书链不受信 (0x800B0109)，"
+                              "常见于自签名/伪造签名伪装可信程序"}
+        return {"name": "Authenticode-Fail", "level": "high",
+                "detail": f"数字签名校验失败 (0x{code:08X})，"
+                          "文件可能被篡改或签名者不受信"}
+    if cat == "unsigned":
+        if is_driver:
+            return {"name": "Unsigned-Driver", "level": "high",
+                    "detail": "内核驱动无数字签名，可被任意加载，"
+                              "属 BYOVD 攻击典型前提"}
+        return {"name": "Unsigned-PE", "level": "low",
+                "detail": "PE 文件无 Authenticode 数字签名"}
+    return None
 
 
 def content_findings(data, db, ctx=None):
@@ -404,18 +451,10 @@ def scan_file(path, db, ctx=None):
                     cat, code = verify(str(path))
             except Exception:
                 cat, code = None, None
-            if cat == "fail":
-                findings.append({"name": "Authenticode-Fail", "level": "high",
-                                 "detail": f"数字签名校验失败 (0x{code:08X})，"
-                                           "文件可能被篡改或签名者不受信"})
-            elif cat == "unsigned":
-                if is_driver:
-                    findings.append({"name": "Unsigned-Driver", "level": "high",
-                                     "detail": "内核驱动无数字签名，可被任意加载，"
-                                               "属 BYOVD 攻击典型前提"})
-                else:
-                    findings.append({"name": "Unsigned-PE", "level": "low",
-                                     "detail": "PE 文件无 Authenticode 数字签名"})
+            if cat in ("fail", "unsigned"):
+                fd_sig = signature_finding(cat, code, is_driver)
+                if fd_sig:
+                    findings.append(fd_sig)
         if ctx.vt:
             from .vt import VTClient, finding_from_stats
             if VTClient.has_key():

@@ -79,8 +79,16 @@ RULES = [
     ("SBX-AntiSandbox",
      re.compile(r"(?i)(isdebuggerpresent|checkremotedebuggerpresent|"
                 r"ntqueryinformationprocess|sandboxie|vboxservice|"
-                r"vmtoolsd|vmwareuser|cuckoo\s*sandbox)"), 1,
-     "反沙箱/反调试环境探测"),
+                r"vmtoolsd|vmwareuser|cuckoo\s*sandbox|"
+                r"1234567\.txt|\brdtsc\b|"
+                r"start-sleep\s+(-m\s+)?[6-9]\d{3,}|\bsleep\s*\(\s*[6-9]\d{3,}\s*\))"), 1,
+     "反沙箱/反调试环境探测（含 drop 探针标记、长延时拖垮沙箱）"),
+    ("SBX-Fake-Signature",
+     re.compile(r"(?i)(signtool\s+sign|makecert\b|certutil\s+-{1,2}sign|"
+                r"fake\s*sign|forge.{0,12}(cert|sign)|"
+                r"self-?signed.{0,24}(cert|exe|driver)|"
+                r"spoof.{0,12}(sign|cert))"), 2,
+     "签名伪造/自签名伪装可信程序"),
 ]
 
 # 行为组合加分：单一特征危害有限，组合出现时危害倍增
@@ -96,6 +104,10 @@ COMBO_RULES = [
      "绕过 AMSI + 下载执行 = 无文件投递反制链"),
     (frozenset({"SBX-AntiSandbox", "SBX-Memory-Exec"}), 1,
      "反沙箱探测 + 内存执行 = 环境规避型 Loader"),
+    (frozenset({"SBX-AntiSandbox", "SBX-Direct-Syscall"}), 2,
+     "反沙箱探测 + 直接系统调用 = 高规避性免杀 Loader"),
+    (frozenset({"SBX-Fake-Signature", "SBX-Memory-Exec"}), 2,
+     "签名伪装 + 内存执行 = 伪装可信的免杀投递链"),
 ]
 
 # oletools 提取出的宏代码会与文件文本合并分析
