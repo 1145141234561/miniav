@@ -24,8 +24,25 @@ python -m miniantivirus scan <文件或目录> [--report 报告.html] [--quarant
 python -m miniantivirus watch <目录>          # 准实时监视扫描
 python -m miniantivirus analyze <样本>        # 深度静态体检（不执行）
 python -m miniantivirus.triage <样本>         # 快速分诊 + JSON 报告
-python -m miniantivirus.selftest              # 全量自检
+python -m miniantivirus test              # 全量自检
 ```
+
+## 联网扫描配置（其他设备启用）
+
+`vt` / `--vt` 联网信誉查询开箱即用零配置（离线功能不受影响）。要在**其他设备**启用在线多引擎查询，二选一：
+
+1. **便携配置（推荐）**：exe 同目录自动生成 `vt_config.json` 模板，填入字段即可：
+   ```json
+   {
+     "api_key": "你的 VirusTotal API Key",
+     "proxy": "http://127.0.0.1:7890"
+   }
+   ```
+   - `api_key`：[virustotal.com](https://www.virustotal.com) 免费注册获取
+   - `proxy`：国内网络通常需要 HTTP 代理才能连通 virustotal.com；海外设备留空 `""`
+2. **环境变量**：设置 `VT_API_KEY`（优先级高于配置文件）
+
+公共 API 限速 4 次/分钟，内置 15 秒最小间隔 + 本地缓存（7 天 TTL）；上传扫描上限 32MB。
 
 ## 目录结构
 

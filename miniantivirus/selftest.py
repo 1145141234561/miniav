@@ -1528,6 +1528,65 @@ def run(db):
     except Exception as exc:
         check("deobf 行反转层", False, f"异常: {exc}")
 
+    # ==================== 第 35 组：联网扫描便携配置（vt_config.json）====================
+    # 其他设备免环境变量：Key/代理从 exe 同目录 vt_config.json 读取；
+    # 环境变量优先；损坏配置容错；代理 opener 正确注入。
+    try:
+        from . import vt as vt_mod
+        cfg_path = sample_dir / "vt_config_test.json"
+        cfg_path.write_text(
+            '{"api_key": "cfgkey123", "proxy": "http://127.0.0.1:7890"}',
+            encoding="utf-8")
+        old_cfg = vt_mod.VT_CONFIG
+        vt_mod.VT_CONFIG = cfg_path
+        had_env = "VT_API_KEY" in os.environ
+        saved_env = os.environ.pop("VT_API_KEY", None)
+        try:
+            # 35a) 配置文件 Key/代理解析（无环境变量时）
+            c1 = vt_mod.VTClient()
+            check("vt 便携配置: 配置文件 Key 解析",
+                  c1.api_key == "cfgkey123", f"api_key={c1.api_key!r}")
+            check("vt 便携配置: 代理解析",
+                  c1.proxy == "http://127.0.0.1:7890", f"proxy={c1.proxy!r}")
+            check("vt 便携配置: has_key() 识别配置文件",
+                  vt_mod.VTClient.has_key(), "")
+
+            # 35b) 环境变量优先于配置文件
+            os.environ["VT_API_KEY"] = "envkey999"
+            c2 = vt_mod.VTClient()
+            check("vt 便携配置: 环境变量优先",
+                  c2.api_key == "envkey999", f"api_key={c2.api_key!r}")
+            del os.environ["VT_API_KEY"]
+
+            # 35c) 代理 opener 注入（显式代理覆盖默认 ProxyHandler）
+            ops = c1._build_opener()
+            phs = [getattr(h, "proxies", {}) for h in ops.handlers
+                   if type(h).__name__ == "ProxyHandler"]
+            check("vt 便携配置: 代理 opener 注入",
+                  any(p.get("https") == "http://127.0.0.1:7890" for p in phs),
+                  f"proxies={phs}")
+            c_bare = vt_mod.VTClient(api_key="k", proxy="")
+            phs2 = [getattr(h, "proxies", {}) for h in
+                    c_bare._build_opener().handlers
+                    if type(h).__name__ == "ProxyHandler"]
+            check("vt 便携配置: 无代理不注入配置值",
+                  all(p.get("https") != "http://127.0.0.1:7890" for p in phs2),
+                  f"proxies={phs2}")
+
+            # 35d) 损坏配置容错（返回空配置，不抛异常）
+            cfg_path.write_text("not json {{{", encoding="utf-8")
+            c3 = vt_mod.VTClient(api_key="k")
+            check("vt 便携配置: 损坏配置容错",
+                  c3.api_key == "k" and c3.proxy == "",
+                  f"api_key={c3.api_key!r} proxy={c3.proxy!r}")
+        finally:
+            vt_mod.VT_CONFIG = old_cfg
+            os.environ.pop("VT_API_KEY", None)
+            if had_env:
+                os.environ["VT_API_KEY"] = saved_env
+    except Exception as exc:
+        check("vt 便携配置组", False, f"异常: {exc}")
+
     ok_all = all(results)
     print(f"\n[i] 自检{'全部通过' if ok_all else '存在失败项'}。")
     return 0 if ok_all else 1
