@@ -113,6 +113,10 @@
       "0c39264337a1186b2e765e24073399cbdcba118306614eb411e315887af578bd": {
         "name": "Antino-UAT11587-Fake-Installer-Gen2",
         "level": "high"
+      },
+      "4e93fb51de8f05622b5edff8c6cec9cc8660049157c88ad4f53572e7d4d16c55": {
+        "name": "360-Ransom-Sorry-01",
+        "level": "high"
       }
     },
     "md5": {
@@ -178,6 +182,118 @@
       },
       "3509431b942232f5c50863baaa02d900": {
         "name": "Storm1-VBS-Worm",
+        "level": "high"
+      },
+      "09f402a02b615dcd14786aaa840db0a2": {
+        "name": "360-APT-C-13-Sandworm-01",
+        "level": "high"
+      },
+      "1b39fce74193dd2cd5c36b2f8b626273": {
+        "name": "360-APT-C-13-Sandworm-02",
+        "level": "high"
+      },
+      "2156c270ffe8e4b23b67efed191b9737": {
+        "name": "360-APT-C-13-Sandworm-03",
+        "level": "high"
+      },
+      "a6d095dc0e01f97db7e74cb5bed402dc": {
+        "name": "360-APT-C-13-Sandworm-04",
+        "level": "high"
+      },
+      "53ac08488544ad1fefd6363db44549cf": {
+        "name": "360-APT-C-13-Sandworm-05",
+        "level": "high"
+      },
+      "227b3fa386cad73f0f388d801060e2c8": {
+        "name": "360-APT-C-13-Sandworm-06",
+        "level": "high"
+      },
+      "0b6f7356919b9632c1158681ee0462f3": {
+        "name": "360-APT-C-13-Sandworm-07",
+        "level": "high"
+      },
+      "4d5074d6e0722ceec45a083fa8444164": {
+        "name": "360-APT-C-13-Sandworm-08",
+        "level": "high"
+      },
+      "99732e49668e56527963742922277459": {
+        "name": "360-APT-C-13-Sandworm-09",
+        "level": "high"
+      },
+      "6616717dfb2a795113b47d862c5412e2": {
+        "name": "360-APT-C-13-Sandworm-10",
+        "level": "high"
+      },
+      "5db8e71b8e82661408f96b43e7ae8faf": {
+        "name": "360-APT-C-13-Sandworm-11",
+        "level": "high"
+      },
+      "487557c9b7288a6b035911a7652ad57c": {
+        "name": "360-APT-C-13-Sandworm-12",
+        "level": "high"
+      },
+      "ba8e682a72c6a3e634c070f0fb057bf5": {
+        "name": "360-APT-C-55-Kimsuky-01",
+        "level": "high"
+      },
+      "bd17b8b10675031cec05c0cd8a001fac": {
+        "name": "360-APT-C-55-Kimsuky-02",
+        "level": "high"
+      },
+      "0d8ceb7dea7d471afa2f8e753b13d2d6": {
+        "name": "360-APT-C-55-Kimsuky-03",
+        "level": "high"
+      },
+      "d9d7d5feb2abc828b58142fc63509d80": {
+        "name": "360-APT-C-55-Kimsuky-04",
+        "level": "high"
+      },
+      "e0e4aec6d494fe68cdaa52d6878a8366": {
+        "name": "360-APT-C-55-Kimsuky-05",
+        "level": "high"
+      },
+      "b406ea5b8628cb7801f47c0189b96182": {
+        "name": "360-APT-C-55-Kimsuky-06",
+        "level": "high"
+      },
+      "23da5ff2ed7bd4ac5a2a148afc037b6a": {
+        "name": "360-APT-C-55-Kimsuky-07",
+        "level": "high"
+      },
+      "45b6b7dadc13e4a4cc30dd82eb58c3ed": {
+        "name": "360-APT-C-55-Kimsuky-08",
+        "level": "high"
+      },
+      "73ff669fc282653bd6c42cf87ade9337": {
+        "name": "360-APT-C-55-Kimsuky-09",
+        "level": "high"
+      },
+      "02ebc2356f9f700bbdac444cdefa0da2": {
+        "name": "360-APT-C-55-Kimsuky-10",
+        "level": "high"
+      },
+      "849ddfdba810b251522690d51475a359": {
+        "name": "360-APT-C-55-Kimsuky-11",
+        "level": "high"
+      },
+      "18be51caa43a4944b39fb73442d61909": {
+        "name": "360-APT-C-48-CNC-01",
+        "level": "high"
+      },
+      "972cc460d4646566cfcbeb3da4e567e9": {
+        "name": "360-APT-C-48-CNC-02",
+        "level": "high"
+      },
+      "8d600d1cf269f21ee5bc78b5e0c6ecfe": {
+        "name": "360-APT-C-48-CNC-03",
+        "level": "high"
+      },
+      "a0c50071c7aaba7e12b975c1952a790b": {
+        "name": "360-APT-C-36-Loader-01",
+        "level": "high"
+      },
+      "e53822b99b9848b73a1297270d0f6dd0": {
+        "name": "360-APT-C-36-Loader-02",
         "level": "high"
       }
     },
@@ -249,6 +365,18 @@
       "data": "(^|\\.)(microsoft-flash\\.com|wps-cn\\.com|osc-cdn\\.com)",
       "name": "Antino-Fake-Installer-Domain",
       "level": "high"
+    },
+    {
+      "type": "regex",
+      "data": "112\\.216\\.9\\.171|45\\.92\\.1\\.165",
+      "name": "360-APT-C2-IP-Set",
+      "level": "high"
+    },
+    {
+      "type": "regex",
+      "data": "dropbox\\.com/scl/fi/(0m6mp6c53dnj6eird0kpd|q59g50jxsw5jjviup83tl)/",
+      "name": "360-Kimsuky-Dropbox-Dropper",
+      "level": "medium"
     }
   ],
   "exclusions": [
