@@ -31,12 +31,5 @@ rule AutoIt_Script_Bundle {
         uint16(0) == 0x5A4D and 1 of ($a*)
 }
 
-rule Nullsoft_Installer {
-    meta:
-        description = "Nullsoft (NSIS) 安装包"
-        level = "low"
-    strings:
-        $a = "NullsoftInst"
-    condition:
-        uint16(0) == 0x5A4D and $a
-}
+// Nullsoft_Installer 已移除：NSIS 安装包标识属识别型特征，
+// 对正常软件分发渠道产生无意义检出。

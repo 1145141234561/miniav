@@ -18,7 +18,11 @@ rule Evasion_UUID_Shellcode {
         $c1 = "UuidFromString" ascii nocase
         $c2 = "UuidToString" ascii nocase
     condition:
-        #uuid * 1024 > filesize or (any of ($c*) and #uuid > 4)
+        // 脚本/文本：数组占满文件或转换 API 伴生即报；
+        // PE：游戏/框架天然含大量 GUID 与 Uuid* 导入，要求数组密度占主导
+        (not uint16(0) == 0x5A4D
+            and (#uuid * 1024 > filesize or (any of ($c*) and #uuid > 4)))
+        or (uint16(0) == 0x5A4D and #uuid > 50 and #uuid * 512 > filesize)
 }
 
 rule Evasion_IPfuscation {
@@ -30,7 +34,9 @@ rule Evasion_IPfuscation {
         $c1 = "RtlIpv4StringToAddress" ascii nocase
         $c2 = "inet_addr" ascii nocase
     condition:
-        #ip > 40 or (any of ($c*) and #ip > 12)
+        (not uint16(0) == 0x5A4D
+            and (#ip > 40 or (any of ($c*) and #ip > 12)))
+        or (uint16(0) == 0x5A4D and #ip > 200 and #ip * 16 > filesize)
 }
 
 rule Evasion_MAC_Shellcode {
@@ -98,10 +104,11 @@ rule Evasion_Unhook_Ntdll {
         level = "medium"
     strings:
         $u1 = "KnownDlls\\ntdll.dll" ascii nocase
-        $u2 = "ntdll.dll" ascii nocase wide
         $m1 = "NtMapViewOfSection" ascii nocase
     condition:
-        uint16(0) == 0x5A4D and ($u1 or all of ($u2, $m1))
+        // KnownDlls 硬编码路径 + 映射 API 双锚：ntdll.dll 裸串与映射 API
+        // 在游戏/框架 DLL 中属常见组合，单独出现不构成解钩语义
+        uint16(0) == 0x5A4D and $u1 and $m1
 }
 
 rule Evasion_VEH_Memory_Loader {
@@ -112,8 +119,12 @@ rule Evasion_VEH_Memory_Loader {
         $v1 = "AddVectoredExceptionHandler" ascii nocase
         $m1 = "VirtualProtect" ascii nocase
         $m2 = "VirtualAlloc" ascii nocase
+        $p1 = { FC 48 83 E4 F0 }
+        $p2 = { FC E8 89 00 00 00 }
     condition:
-        uint16(0) == 0x5A4D and all of ($v1, $m1, $m2)
+        // 游戏 SDK/反作弊合法使用 VEH + VirtualProtect，必须有
+        // shellcode 前导桩伴生才构成内存加载语义
+        uint16(0) == 0x5A4D and all of ($v1, $m1, $m2) and any of ($p*)
 }
 
 rule Evasion_IPv6fuscation {
@@ -124,7 +135,9 @@ rule Evasion_IPv6fuscation {
         $ip6 = /([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}/
         $c1 = /RtlIpv6\s*StringToAddress/ nocase
     condition:
-        #ip6 > 40 or (any of ($c*) and #ip6 > 4)
+        (not uint16(0) == 0x5A4D
+            and (#ip6 > 40 or (any of ($c*) and #ip6 > 4)))
+        or (uint16(0) == 0x5A4D and #ip6 > 200 and #ip6 * 22 > filesize)
 }
 
 rule Evasion_Hex_Escape_Shellcode {

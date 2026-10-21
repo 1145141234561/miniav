@@ -59,16 +59,8 @@ rule BYOVD_MsIo
         uint16(0) == 0x5A4D and $s
 }
 
-rule BYOVD_WinIo
-{
-    meta:
-        description = "WinIo 直接端口/物理内存访问驱动（常被 BYOVD 滥用）"
-        level = "high"
-    strings:
-        $s = "WinIo" ascii nocase
-    condition:
-        uint16(0) == 0x5A4D and $s
-}
+// BYOVD_WinIo 已移除：单品牌串对游戏 SDK（合法硬件直访问组件）高误报，
+// WinIo 本体同时被合法软件与攻击者使用，静态无法区分意图。
 
 rule BYOVD_InpOutX64
 {

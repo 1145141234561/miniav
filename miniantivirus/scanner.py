@@ -222,12 +222,20 @@ def shannon_entropy(data):
     return -sum(c / n * math.log2(c / n) for c in freq if c)
 
 
-def pe_heuristics(data):
-    """对 PE 文件做启发式分析，返回 finding dict 或 None。"""
+def pe_heuristics(data, trusted=False):
+    """对 PE 文件做启发式分析，返回 finding dict 或 None。
+
+    trusted：文件已通过有效 Authenticode 校验（发布者身份可信）——
+    正常软件（游戏框架/SDK/安装器）天然具备注入形态 API 与高熵资源，
+    启发式只对未签名文件生效，避免对已签名合法组件误报。
+    """
+    if trusted:
+        return None
     reasons, score = [], 0
     sample = data[:4194304]
     ent = shannon_entropy(sample)
-    if ent > 7.4:
+    # 阈值 7.9：NSIS/安装包/压缩资源的合法熵常在 7.5-7.8 区间
+    if ent > 7.9:
         reasons.append(f"文件熵偏高 {ent:.2f}/8（疑似加壳/加密）")
         score += 1
     if not HAS_PEFILE:
@@ -253,8 +261,13 @@ def pe_heuristics(data):
         reasons.append("导入表含完整进程注入 API 组合（分配/写入/远程执行）")
         score += 2
     elif len(cats) >= 2:
-        reasons.append("导入表含可疑 API 组合: " + ", ".join(sorted(cats)))
-        score += 1
+        # hook（SetWindowsHookEx）与 exec（CreateRemoteThread/QueueUserAPC）
+        # 不参与弱组合计数：GUI 框架/输入法/游戏更新器等合法场景大量使用；
+        # 完整注入三件套（alloc+write+exec）仍按强判据单独计 2 分
+        comb = [c for c in cats if c not in ("hook", "exec")]
+        if len(comb) >= 2:
+            reasons.append("导入表含可疑 API 组合: " + ", ".join(sorted(comb)))
+            score += 1
     elif cats == ["download"]:
         reasons.append("导入表含 URLDownloadToFile")
         score += 1
@@ -376,7 +389,9 @@ def deobf_findings(data, db, ctx):
             seen.add(key)
             out.append({"name": h["name"], "level": _weight_level(h["weight"]),
                         "detail": f"解混淆({chain})后命中行为特征: {h['desc']}"})
-    if not out and max_depth >= 2:
+    # 仅对非 PE 原始文件报「嵌套编码」兜底：安装包/框架 PE 内嵌
+    # base64+zlib 层属正常资源组织，在游戏目录等场景为纯噪声
+    if not out and max_depth >= 2 and not data[:2] == b"MZ":
         out.append({"name": "Obfuscated-Content", "level": "low",
                     "detail": f"检测到 {max_depth} 层嵌套编码载荷（base64/压缩/转义套叠），"
                               "内容隐藏但未命中已知特征"})
@@ -560,7 +575,23 @@ def scan_file(path, db, ctx=None):
                 is_driver = int(_pe.OPTIONAL_HEADER.Subsystem) == 1
             except Exception:
                 pass
-        heur = pe_heuristics(data)
+        # 签名校验先于启发式：有效 Authenticode（发布者可信）→ 跳过启发式
+        sig_cat = None
+        if ctx.sigcheck:
+            try:
+                if is_driver:
+                    from .wintrust import verify_driver
+                    sig_cat, code = verify_driver(str(path))
+                else:
+                    from .wintrust import verify
+                    sig_cat, code = verify(str(path))
+            except Exception:
+                sig_cat, code = None, None
+            if sig_cat in ("fail", "unsigned"):
+                fd_sig = signature_finding(sig_cat, code, is_driver)
+                if fd_sig:
+                    findings.append(fd_sig)
+        heur = pe_heuristics(data, trusted=(sig_cat == "ok"))
         if heur:
             findings.append(heur)
         if ctx.emulate and len(data) <= 8 * 1024 * 1024:
@@ -569,20 +600,6 @@ def scan_file(path, db, ctx=None):
             except Exception as exc:
                 findings.append({"name": "Emu-Error", "level": "low",
                                  "detail": f"模拟引擎异常（已跳过）: {exc}"})
-        if ctx.sigcheck:
-            try:
-                if is_driver:
-                    from .wintrust import verify_driver
-                    cat, code = verify_driver(str(path))
-                else:
-                    from .wintrust import verify
-                    cat, code = verify(str(path))
-            except Exception:
-                cat, code = None, None
-            if cat in ("fail", "unsigned"):
-                fd_sig = signature_finding(cat, code, is_driver)
-                if fd_sig:
-                    findings.append(fd_sig)
         if ctx.vt:
             from .vt import VTClient, finding_from_stats
             if VTClient.has_key():

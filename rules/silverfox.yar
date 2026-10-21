@@ -127,14 +127,22 @@ rule SilverFox_ThreadCtx_Inject
         family = "SilverFox/Loader-Gen"
         level = "medium"
         source = "silverfox"
-        note = "变形抗性：API 组合由功能决定，多态重编译不变"
+        note = "双锚=注入API组合+银狐伴生特征，排除合法跨进程写入"
     strings:
         $a1 = "SuspendThread" ascii
         $a2 = "SetThreadContext" ascii
         $a3 = "ResumeThread" ascii
         $a4 = "VirtualAlloc" ascii
+        // 第二锚：银狐家族伴生特征（Public 投递/计划任务持久化/
+        // OSS C2/伪安装器命名/远控组件），正常软件不含
+        $an1 = "Users\\Public\\" ascii nocase
+        $an2 = "schtasks" ascii nocase
+        $an3 = /https?:\/\/[a-z0-9-]+\.oss-cn-[a-z0-9]+\.aliyuncs\.com/ ascii
+        $an4 = /AJiaSu_\d/ ascii
+        $an5 = "AweSun" ascii
+        $an6 = /instapp\.s\.\d/ ascii
     condition:
-        uint16(0) == 0x5A4D and all of ($a*)
+        uint16(0) == 0x5A4D and all of ($a1, $a2, $a3, $a4) and any of ($an*)
 }
 
 /*

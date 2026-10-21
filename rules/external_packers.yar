@@ -14,21 +14,6 @@ condition:
 	any of them
 }
 
-rule possible_includes_base64_packed_functions  
-{ 
-	meta: 
-		impact = 5 
-		hide = true 
-		desc = "Detects possible includes and packed functions" 
-	strings: 
-		$f = /(atob|btoa|;base64|base64,)/ nocase
-		//$ff = /(?:[A-Za-z0-9]{4}){2,}(?:[A-Za-z0-9]{2}[AEIMQUYcgkosw048]=|[A-Za-z0-9][AQgw]==)/ nocase 
-		$fff = /([A-Za-z0-9]{4})*([A-Za-z0-9]{2}==|[A-Za-z0-9]{3}=|[A-Za-z0-9]{4})/ 
-	condition: 
-		$f and $fff
-}
- 
-
 rule src_ptheft_command {
 	meta:
 		description = "Auto-generated rule - file command.js"
@@ -155,28 +140,6 @@ rule banbra : banker
         #a > 3 and #b > 3 and #c > 3 and #d > 3 and #e > 3
 }
 
-rule Borland
-{
-      meta:
-		author="malware-lu"
-	strings:
-		$patternBorland = "Borland" wide ascii
-	condition:
-		$patternBorland
-}
-
-// 20150909 - Issue #39 - Commented because of High FP rate
-/*
-rule java
-{
-      meta:
-		author="malware-lu"
-	strings:
-		$patternjava = "java" wide ascii
-	condition:
-		$patternjava
-}
-*/
 rule MSLRHv032afakePCGuard4xxemadicius
 {
       meta:
@@ -20299,15 +20262,6 @@ rule mumblehard_packer
 import "pe"
 import "math"
 
-rule IsPE32 : PECheck
-{
-	condition:
-		// MZ signature at offset 0 and ...
-		uint16(0) == 0x5A4D and
-		// ... PE signature at offset stored in MZ header at 0x3C
-		uint16(uint32(0x3C)+0x18) == 0x010B
-}
-
 rule IsNET_EXE : PECheck
 {
 	condition:
@@ -20318,25 +20272,6 @@ rule IsNET_DLL : PECheck
 {
 	condition:
 		pe.imports ("mscoree.dll","_CorDllMain")
-}
-
-rule IsDLL : PECheck
-{
-	condition:
-		// MZ signature at offset 0 and ...
-		uint16(0) == 0x5A4D and
-		// ... PE signature at offset stored in MZ header at 0x3C
-		(uint16(uint32(0x3C)+0x16) & 0x2000) == 0x2000
-
-}
-
-rule IsWindowsGUI : PECheck
-{
-	condition:
-		// MZ signature at offset 0 and ...
-		uint16(0) == 0x5A4D and
-		// ... PE signature at offset stored in MZ header at 0x3C
-		uint16(uint32(0x3C)+0x5C) == 0x0002
 }
 
 rule HasTaggantSignature : PECheck
@@ -20362,25 +20297,6 @@ rule HasTaggantSignature : PECheck
 		$a0
 }
 
-rule IsBeyondImageSize : PECheck
-{
-	meta: 
-		author = "_pusher_"
-		date = "2016-07"
-		description = "Data Beyond ImageSize Check"
-	condition:
-		// MZ signature at offset 0 and ...
-		uint16(0) == 0x5A4D and
-		// ... PE signature at offset stored in MZ header at 0x3C
-		uint32(uint32(0x3C)) == 0x00004550 and
-		for any i in (0..pe.number_of_sections-1):
-		( 
-		(pe.sections[i].virtual_address+pe.sections[i].virtual_size) > (uint32(uint32(0x3C)+0x50)) or
-		(pe.sections[i].raw_data_offset+pe.sections[i].raw_data_size) > filesize
-		)
-}
-
-
 rule HasModified_DOS_Message : PECheck
 {
 	meta: 
@@ -20399,16 +20315,6 @@ rule HasModified_DOS_Message : PECheck
 		// ... PE signature at offset stored in MZ header at 0x3C
 		uint32(uint32(0x3C)) == 0x00004550 and not
 		(for any of ($a*) : ($ in (0x0..uint32(0x3c) )))
-}
-
-rule IsSuspicious
-{
-	meta:
-		author="_pusher_"
-		date = "2016-07"
-		description="Might be PE Virus"
-	condition:
-		uint32(0x20) == 0x20202020	
 }
 
 rule IsGoLink
@@ -20615,30 +20521,6 @@ rule Cygwin : Red Hat
 		($a0 and (any of ($aa*) ))
 }
 
-rule MinGW_1
-{
-	meta:
-		author = "_pusher_"
-		date = "2016-07"
-	strings:		
-		$a0 = "msvcrt.dll" ascii nocase
-		$aa1 = "Mingw-w64 runtime failure:"
-		$aa2 = "-LIBGCCW32-EH-3-SJLJ-GTHR-MINGW32" wide ascii nocase
-		$aa3 = "_mingw32_init_mainargs"
-		//too wild ?
-		$aa4 = "mingw32"
-		$aa5 = "-LIBGCCW32-EH-2-SJLJ-GTHR-MINGW32" wide ascii nocase
-		$aa6 = "-GCCLIBCYGMING-EH-TDM1-SJLJ-GTHR-MINGW32" wide ascii nocase
-		$aa7 = "Mingw runtime failure:"
-	condition:
-		(
-		(pe.linker_version.major == 2) and (pe.linker_version.minor == 56 ) or
-		(pe.linker_version.major == 2) and ((pe.linker_version.minor >= 21) and (pe.linker_version.minor <= 25))
-		)
-		and
-		($a0 and (any of ($aa*) ))
-}
-
 rule FASM : flat assembler {
 //abit weak, needs more targets & testing
 	meta:
@@ -20694,60 +20576,6 @@ rule PellesC : Pelle Orinius
 		3 of ($aa*) and
 		(pe.linker_version.major == 2) and (pe.linker_version.minor == 50 )
 }
-
-rule QtFrameWork
-{
-      	meta:
-		author="_pusher_"
-		date="2016-08"
-	strings:
-		$aa0 = "\x00Qt5Core.dll\x00" ascii
-		$aa1 = "\x00QtCore4.dll\x00" ascii
-	condition:
-		(any of ($aa*) )
-}
-
-/* usefull ? 18:32 2016-08-10
-rule masm32_tasm32
-{
-	meta:
-		author = "PEiD"
-		description = "MASM32 / TASM32"
-		group = "20"
-		function = "0"
-	strings:
-		$a0 = { 6A ?? E8 ?? ?? ?? ?? A3 }
-	condition:
-		$a0
-}
-*/
-
-
-/* ==== peid.yar ==== */
-/*
-YARA rules generated with ./peid2yara.py
-BY: Jaume Martin
-GITHUB: https://git.todoparami.net/Xumeiquer/PEiD_to_Yara
-GENERATED ON: 2016-08-29 21:22:29.883920
-
-Rules generated from:
-
-https://raw.githubusercontent.com/joxeankoret/pyew/VERSION_3X/plugins/UserDB.TXT
-https://raw.githubusercontent.com/AlienVault-Labs/AlienVaultLabs/master/peid2yar/dbs/userdb_panda.txt
-https://raw.githubusercontent.com/AlienVault-Labs/AlienVaultLabs/master/peid2yar/dbs/userdb_jclausing.txt
-https://raw.githubusercontent.com/AlienVault-Labs/AlienVaultLabs/master/peid2yar/dbs/userdb_exeinfope.txt
-https://raw.githubusercontent.com/AlienVault-Labs/AlienVaultLabs/master/peid2yar/dbs/eppackersigs.peid
-https://raw.githubusercontent.com/AlienVault-Labs/AlienVaultLabs/master/peid2yar/dbs/epcompilersigs.peid
-https://raw.githubusercontent.com/AlienVault-Labs/AlienVaultLabs/master/peid2yar/dbs/UserDB.TXT
-https://raw.githubusercontent.com/cuckoosandbox/cuckoo/master/data/peutils/UserDB.TXT
-http://handlers.sans.org/jclausing/userdb.txt
-https://raw.githubusercontent.com/seifreed/PEID/master/userdb.txt
-https://raw.githubusercontent.com/guelfoweb/peframe/5beta/peframe/signatures/userdb.txt
-
-
-*/
-
-import "pe"
 
 rule NsPacK_V33_LiuXingPing_additional: PEiD
 {
@@ -23699,15 +23527,6 @@ rule PECompact_v168_v184_additional: PEiD
 
 }
 
-rule Microsoft_Visual_Cpp_V80_Debug: PEiD
-{
-    strings:
-        $a = { E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 }
-    condition:
-        $a at pe.entry_point
-
-}
-
 rule Armadillo_v250_additional: PEiD
 {
     strings:
@@ -25965,15 +25784,6 @@ rule ExeLock_v100_Hint_DOS_EP: PEiD
 {
     strings:
         $a = { 06 8C C8 8E C0 BE ?? ?? 26 ?? ?? 34 ?? 26 ?? ?? 46 81 ?? ?? ?? 75 ?? 40 B3 ?? B3 ?? F3 }
-    condition:
-        $a at pe.entry_point
-
-}
-
-rule Borland_Delphi_40_additional: PEiD
-{
-    strings:
-        $a = { 55 8B EC 83 C4 }
     condition:
         $a at pe.entry_point
 
@@ -30675,15 +30485,6 @@ rule EmbedPE_V100_V124_cyclotron_additional: PEiD
 
 }
 
-rule Microsoft_Visual_Cpp_80_Debug_: PEiD
-{
-    strings:
-        $a = { E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 }
-    condition:
-        $a at pe.entry_point
-
-}
-
 rule ACProtect_V13X_V14X_RiSco: PEiD
 {
     strings:
@@ -33890,16 +33691,6 @@ rule UPolyX_delikon: PEiD
         $a = { FF 96 ?? ?? ?? 00 61 E9 ?? ?? ?? FF }
     condition:
         $a at pe.entry_point
-
-}
-
-rule Microsoft_Visual_Cpp_80_Debug: PEiD
-{
-    strings:
-        $a = { E9 ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? 4E 65 6F 4C 69 74 65 }
-        $b = { E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 ?? ?? ?? ?? E9 }
-    condition:
-        for any of ($*) : ( $ at pe.entry_point )
 
 }
 
@@ -37410,15 +37201,6 @@ rule Anti007_V25_V26_LiuXingPing_SignByfly: PEiD
 {
     strings:
         $a = { 00 00 00 4C 6F 61 64 4C 69 62 72 61 72 79 41 00 00 00 47 65 74 50 72 6F 63 41 64 64 72 65 73 73 00 00 00 56 69 72 74 75 61 6C 50 72 6F 74 65 63 74 00 00 00 56 69 72 74 75 61 6C 41 6C 6C 6F 63 00 00 00 56 69 72 74 75 61 6C 46 72 65 65 00 00 00 47 65 74 53 79 73 74 65 6D 44 69 72 65 63 74 6F 72 79 41 00 00 00 43 72 65 61 74 65 46 69 6C 65 41 00 00 00 57 72 69 74 65 46 69 6C 65 00 00 00 43 6C 6F 73 65 48 61 6E 64 6C 65 00 00 00 45 78 69 74 50 72 6F 63 65 73 73 00 00 }
-    condition:
-        $a at pe.entry_point
-
-}
-
-rule Visual_Cpp_2005_DLL_Microsoft: PEiD
-{
-    strings:
-        $a = { 8B FF 55 8B EC 83 7D 0C 01 }
     condition:
         $a at pe.entry_point
 
@@ -40965,16 +40747,6 @@ rule _PseudoSigner_01_Microsoft_Visual_Cpp_620_Anorganix: PEiD
         $a = { 90 90 90 90 68 ?? ?? ?? ?? 67 64 FF 36 00 00 67 64 89 26 00 00 F1 90 90 90 90 55 8B EC 83 EC 50 53 56 57 BE 90 90 90 90 8D 7D F4 A5 A5 66 A5 8B }
     condition:
         $a at pe.entry_point
-
-}
-
-rule Microsoft_Visual_Cpp_v50v60_MFC: PEiD
-{
-    strings:
-        $a = { 55 8B EC ?? }
-        $b = { 55 8B EC 6A FF 68 ?? ?? ?? ?? 68 ?? ?? ?? ?? 64 A1 00 00 00 00 50 }
-    condition:
-        for any of ($*) : ( $ at pe.entry_point )
 
 }
 
@@ -58271,15 +58043,6 @@ rule CSV_01: PEiD
 
 }
 
-rule Borland_Delphi_30_additional: PEiD
-{
-    strings:
-        $a = { 55 8B EC 83 }
-    condition:
-        $a at pe.entry_point
-
-}
-
 rule EXECryptor_v151x_additional: PEiD
 {
     strings:
@@ -58740,15 +58503,6 @@ rule AutoLogic_Graphics_format_Hint_FILE_START: PEiD
 {
     strings:
         $a = { FF 04 00 07 }
-    condition:
-        $a at pe.entry_point
-
-}
-
-rule Borland_Delphi_30_: PEiD
-{
-    strings:
-        $a = { 55 8B EC 83 }
     condition:
         $a at pe.entry_point
 
@@ -62326,16 +62080,6 @@ rule yzpack_V112_UsAr_Sign_by_fly: PEiD
         $a = { 5A 52 45 60 83 EC 18 8B EC 8B FC 33 C0 64 8B 40 30 78 0C 8B 40 0C 8B 70 1C AD 8B 40 08 EB 09 8B 40 34 83 C0 7C 8B 40 3C AB E9 ?? ?? ?? ?? B4 09 BA 00 00 1F CD 21 B8 01 4C CD 21 40 00 00 00 50 45 00 00 4C 01 02 00 ?? ?? ?? ?? 00 00 00 00 00 00 00 00 E0 00 ?? ?? 0B 01 ?? ?? ?? ?? 00 00 }
     condition:
         $a at pe.entry_point
-
-}
-
-rule Borland_Delphi_Setup_Module: PEiD
-{
-    strings:
-        $a = { 55 8B EC 83 C4 }
-        $b = { 55 8B EC 83 C4 ?? 53 56 57 33 C0 89 45 F0 89 45 D4 89 45 D0 E8 }
-    condition:
-        for any of ($*) : ( $ at pe.entry_point )
 
 }
 
@@ -66216,15 +65960,6 @@ rule Freshbind_v20_gFresh: PEiD
 
 }
 
-rule Borland_Delphi_40: PEiD
-{
-    strings:
-        $a = { 55 8B EC 83 C4 }
-    condition:
-        $a at pe.entry_point
-
-}
-
 rule Vx_Keypress1212: PEiD
 {
     strings:
@@ -69928,16 +69663,6 @@ rule _PseudoSigner_01_Microsoft_Visual_Basic_60_DLL_Anorganix_additional: PEiD
 
 }
 
-rule Borland_Delphi_v40_v50: PEiD
-{
-    strings:
-        $a = { 55 8B EC 83 }
-        $b = { 50 6A 00 E8 ?? ?? FF FF BA ?? ?? ?? ?? 52 89 05 ?? ?? ?? ?? 89 42 04 C7 42 08 00 00 00 00 C7 42 0C 00 00 00 00 E8 ?? ?? ?? ?? 5A 58 E8 ?? ?? ?? ?? C3 }
-    condition:
-        for any of ($*) : ( $ at pe.entry_point )
-
-}
-
 rule ASPack_v2000: PEiD
 {
     strings:
@@ -70829,15 +70554,6 @@ rule EXE_Stealth_v25_WebToolMaster: PEiD
 {
     strings:
         $a = { 60 90 EB 22 45 78 65 53 74 65 61 6C 74 68 }
-    condition:
-        $a at pe.entry_point
-
-}
-
-rule Visual_Cpp_2003_DLL_Microsoft: PEiD
-{
-    strings:
-        $a = { 8B FF 55 8B EC }
     condition:
         $a at pe.entry_point
 
@@ -72616,15 +72332,6 @@ rule UPX_Modifier_v01x_additional: PEiD
 {
     strings:
         $a = { 50 BE ?? ?? ?? ?? 8D BE ?? ?? ?? ?? 57 83 CD }
-    condition:
-        $a at pe.entry_point
-
-}
-
-rule VC8_Microsoft_Corporation: PEiD
-{
-    strings:
-        $a = { E8 ?? ?? ?? ?? E9 ?? ?? FF FF }
     condition:
         $a at pe.entry_point
 
@@ -86104,16 +85811,6 @@ rule MEW_11_SE_v11_Northfox_HCC_additional: PEiD
 
 }
 
-rule Borland_Delphi_v30: PEiD
-{
-    strings:
-        $a = { 55 8B EC 83 }
-        $b = { 50 6A ?? E8 ?? ?? FF FF BA ?? ?? ?? ?? 52 89 05 ?? ?? ?? ?? 89 42 04 E8 ?? ?? ?? ?? 5A 58 E8 ?? ?? ?? ?? C3 55 8B EC 33 C0 }
-    condition:
-        for any of ($*) : ( $ at pe.entry_point )
-
-}
-
 rule Microsoft_C_Library_1985: PEiD
 {
     strings:
@@ -86474,16 +86171,6 @@ rule Hyper_Archive: PEiD
     strings:
         $a = { 1A 53 54 }
         $b = { 1A 48 50 }
-    condition:
-        for any of ($*) : ( $ at pe.entry_point )
-
-}
-
-rule Microsoft_Visual_Cpp_8: PEiD
-{
-    strings:
-        $a = { 00 00 00 00 00 00 ?? ?? 00 00 00 00 00 ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? 00 00 ?? ?? ?? ?? ?? 00 00 00 00 ?? ?? 00 00 00 00 00 ?? ?? ?? 00 00 00 00 00 ?? ?? ?? 00 00 00 00 00 ?? ?? ?? ?? 00 00 00 00 00 ?? ?? 00 00 00 00 00 ?? ?? ?? 00 00 }
-        $b = { E8 ?? ?? 00 00 E9 ?? ?? FF FF }
     condition:
         for any of ($*) : ( $ at pe.entry_point )
 
@@ -88560,16 +88247,6 @@ rule XPack_167_com_additional: PEiD
         $a = { E9 53 00 FF FD FF FB FF F9 FF BC 03 00 8B E5 4C 4C C3 }
     condition:
         $a at pe.entry_point
-
-}
-
-rule Borland_Delphi_DLL: PEiD
-{
-    strings:
-        $a = { 55 8B EC 83 }
-        $b = { 55 8B EC 83 C4 B4 B8 ?? ?? ?? ?? E8 ?? ?? ?? ?? E8 ?? ?? ?? ?? 8D 40 }
-    condition:
-        for any of ($*) : ( $ at pe.entry_point )
 
 }
 

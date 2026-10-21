@@ -107,13 +107,19 @@ def _try_xor(data):
         for m in _EXEC_MARKERS_LC:
             if m in dec:
                 score += 2
-        if dec[:2] == b"mz":
+        mz_lead = dec[:2] == b"mz"
+        if mz_lead:
             score += 2
         if _printable_ratio(dec[:4096]) > 0.9:
             score += 1
+        # 有效性闸门：解码产物必须是「文本」或「PE 载荷」，纯二进制垃圾一律拒绝。
+        # 二进制文件（游戏 DLL 等）被任意 key 异或后仍可能偶然命中单个标记，
+        # 是行为特征误报的根源；真 XOR 文本混淆的可打印比例必然高。
+        if _printable_ratio(dec[:4096]) < 0.85 and not mz_lead:
+            continue
         if score > best_score:
             best_key, best_score = key, score
-    if best_key and best_score >= 1:
+    if best_key and best_score >= 2:
         table = bytes(i ^ best_key for i in range(256))
         return [data.translate(table)]
     return []
@@ -209,8 +215,12 @@ def _layer_candidates(data):
             cands.append(("char-array", dec))
     for dec in _try_deflate(data):
         cands.append(("deflate", dec))
-    for dec in _try_xor(data):
-        cands.append(("xor-single-byte", dec))
+    # xor 爆破仅用于脚本/文本类文件：PE 二进制被任意 key 异或后
+    # 凑出行为标记是必然事件（游戏目录误报根源），模式门控层
+    # （base64/deflate/hex 等）不受此限，PE 内嵌编码载荷仍可检出
+    if data[:2] != b"MZ":
+        for dec in _try_xor(data):
+            cands.append(("xor-single-byte", dec))
     rev = _try_line_reverse(data)
     if rev:
         cands.append(("line-reverse", rev))

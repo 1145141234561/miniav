@@ -1289,18 +1289,31 @@ def run(db):
                   next((fd["name"] for fd in fds_gen
                         if fd["name"].startswith("SilverFox")), ""))
 
-            # 31b) 线程上下文注入 API 四件套 → ThreadCtx_Inject
-            # （功能决定导入表，重编译不变）
+            # 31b) 线程上下文注入 API 四件套 + 银狐伴生锚 → ThreadCtx_Inject
+            # （功能决定导入表，重编译不变；双锚排除合法跨进程写入）
             p_tci = gen_dir / "tci_probe.bin"
             p_tci.write_bytes(b"MZ" + b"\x90" * 40
                               + b"SuspendThread SetThreadContext"
-                              + b" ResumeThread VirtualAlloc")
+                              + b" ResumeThread VirtualAlloc"
+                              + b"C:\\Users\\Public\\aB3xK9\\ldr.exe")
             fds_tci = scan_file(p_tci, db, ctx_g)
             check("银狐泛化层: 线程上下文注入 API 组合检出",
                   any(fd["name"] == "SilverFox_ThreadCtx_Inject"
                       for fd in fds_tci),
                   next((fd["name"] for fd in fds_tci
                         if fd["name"].startswith("SilverFox")), ""))
+
+            # 31b2) 同款注入 API 但无银狐伴生锚（模拟游戏热更新/下载器）
+            # → 不应触发 ThreadCtx_Inject（误报回归防线）
+            p_tci2 = gen_dir / "tci_benign.bin"
+            p_tci2.write_bytes(b"MZ" + b"\x90" * 40
+                               + b"SuspendThread SetThreadContext"
+                               + b" ResumeThread VirtualAlloc")
+            fds_tci2 = scan_file(p_tci2, db, ctx_g)
+            check("银狐泛化层: 注入 API 无伴生锚零误报",
+                  not any(fd["name"] == "SilverFox_ThreadCtx_Inject"
+                          for fd in fds_tci2),
+                  "; ".join(fd["name"] for fd in fds_tci2))
 
             # 31c) OSS 正则 + 投递路径双锚 → OSS_C2_Gen
             # （bucket 换名成本低，托管+投递组合是架构决策）

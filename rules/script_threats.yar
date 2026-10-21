@@ -46,5 +46,7 @@ rule Base64_Blob_With_Exec {
         $b64 = /[A-Za-z0-9+\/]{200,}={0,2}/
         $exec = /(invoke-expression|\biex\b|\beval\s*\(|execscript|atob\s*\()/ nocase
     condition:
-        all of them and filesize < 5MB
+        // 目标是脚本类文件；PE 内嵌 base64 片段 + eval 语义串是
+        // 安装包/框架资源常见巧合，不构成脚本威胁
+        all of them and filesize < 5MB and not uint16(0) == 0x5A4D
 }
