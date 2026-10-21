@@ -142,6 +142,35 @@ def _decode_chararrays(text):
     return outs
 
 
+_STRUCT_KEYS = (b"set ", b"call ", b"sub ", b"function", b"if ", b"then",
+                b"end if", b"next", b"loop", b"dim ", b"wscript", b"createobject")
+
+
+def _try_line_reverse(data):
+    """整行字符反转混淆检测（暴风一号 Storm-1 型）。
+
+    所有标识符以反转形态存在于原文，明文特征锚全部失效。
+    判据：反转后脚本结构词命中数 > 原文 2 倍且 ≥3，才采纳还原视图——
+    正常脚本反转后结构词必然骤减，不会误触发。
+    """
+    if len(data) < 64 or b"\x00" in data[:4096]:
+        return None
+    text = data.decode("utf-8", "ignore")
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    if len(lines) < 4:
+        return None
+    rev = [ln[::-1] for ln in lines]
+
+    def _score(ls):
+        lc = [ln.lower().encode("ascii", "ignore") for ln in ls]
+        return sum(1 for ln in lc for k in _STRUCT_KEYS if k in ln)
+
+    base, rs = _score(lines), _score(rev)
+    if rs > base * 2 and rs >= 3:
+        return "\n".join(ln[::-1] for ln in text.splitlines()).encode("utf-8", "ignore")
+    return None
+
+
 def _layer_candidates(data):
     """对一层输入产出所有还原候选 [(变换名, bytes)]。"""
     cands = []
@@ -182,6 +211,9 @@ def _layer_candidates(data):
         cands.append(("deflate", dec))
     for dec in _try_xor(data):
         cands.append(("xor-single-byte", dec))
+    rev = _try_line_reverse(data)
+    if rev:
+        cands.append(("line-reverse", rev))
     return cands
 
 

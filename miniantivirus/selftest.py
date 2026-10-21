@@ -1491,6 +1491,43 @@ def run(db):
     except Exception as exc:
         check("暴风一号反转混淆反制", False, f"异常: {exc}")
 
+    # ==================== 第 34 组：deobf 行反转层 ====================
+    # 行反转混淆（Storm-1 型）接入 deobf 链：还原文本经 content_findings
+    # 复扫命中模式签名；正常脚本不误触发 line-reverse 变换。
+    try:
+        # 34a) 反转混淆探针 → 还原后复扫命中 AJiaSu 投递链 pattern
+        payload_lines = [
+            "Set ws = CreateObject(\"WScript.Shell\")",
+            "Call ws.Run(\"AJiaSu_4.9.5.0.exe\")",
+            "If ok Then okmore",
+            "Next step loops",
+            "Sub MainEnd()",
+        ]
+        p_rev = sample_dir / "storm1_rev_probe.txt"
+        p_rev.write_text("\n".join(ln[::-1] for ln in payload_lines) + "\n",
+                         encoding="utf-8")
+        fds_rev = [fd for fd in scan_file(p_rev, db, ctx_g if _gen_has_yara
+                                          else ScanContext())
+                   if "line-reverse" in fd.get("detail", "")]
+        check("deobf 行反转: 混淆探针还原检出",
+              bool(fds_rev),
+              f"{[(fd['name'], fd['detail'][:60]) for fd in fds_rev]}")
+
+        # 34b) 正常正序脚本不误触发 line-reverse
+        p_norm = sample_dir / "normal_script.txt"
+        p_norm.write_text(
+            "Set ws = CreateObject(\"WScript.Shell\")\n"
+            "Call ws.Run(\"notepad.exe\")\n"
+            "If ok Then okmore\n"
+            "Next step loops\n"
+            "Sub MainEnd()\n", encoding="utf-8")
+        fds_norm = [fd for fd in scan_file(p_norm, db, ScanContext())
+                    if "line-reverse" in fd.get("detail", "")]
+        check("deobf 行反转: 正常脚本零误触发",
+              not fds_norm, f"{fds_norm}")
+    except Exception as exc:
+        check("deobf 行反转层", False, f"异常: {exc}")
+
     ok_all = all(results)
     print(f"\n[i] 自检{'全部通过' if ok_all else '存在失败项'}。")
     return 0 if ok_all else 1
