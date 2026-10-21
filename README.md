@@ -29,20 +29,47 @@ python -m miniantivirus test              # 全量自检
 
 ## 联网扫描配置（其他设备启用）
 
-`vt` / `--vt` 联网信誉查询开箱即用零配置（离线功能不受影响）。要在**其他设备**启用在线多引擎查询，二选一：
+`vt` / `--vt` 联网信誉查询开箱即用零配置（离线功能不受影响）。要在**其他设备**启用在线多引擎查询，按以下步骤配置：
 
-1. **便携配置（推荐）**：exe 同目录自动生成 `vt_config.json` 模板，填入字段即可：
-   ```json
-   {
-     "api_key": "你的 VirusTotal API Key",
-     "proxy": "http://127.0.0.1:7890"
-   }
-   ```
-   - `api_key`：[virustotal.com](https://www.virustotal.com) 免费注册获取
-   - `proxy`：国内网络通常需要 HTTP 代理才能连通 virustotal.com；海外设备留空 `""`
-2. **环境变量**：设置 `VT_API_KEY`（优先级高于配置文件）
+### 第 1 步：注册 VirusTotal 并获取 API Key
 
-公共 API 限速 4 次/分钟，内置 15 秒最小间隔 + 本地缓存（7 天 TTL）；上传扫描上限 32MB。
+1. 打开 [https://www.virustotal.com](https://www.virustotal.com)，点击右上角 **Sign up** 免费注册（邮箱即可）
+2. 登录后点击右上角**头像 → API key**，页面显示的那串 64 位十六进制字符就是你的 Key
+3. 免费配额：**4 次/分钟、500 次/天**（本程序已内置 15 秒最小间隔 + 7 天本地缓存兜底）
+
+### 第 2 步：把 Key 配置到 MiniAV（二选一）
+
+**方式 A：便携配置文件（推荐）**
+
+先随便跑一次联网命令（如 `MiniAV.exe scan 某文件 --vt`），程序会在 **exe 同目录**自动生成 `vt_config.json` 模板（源码运行则在项目根目录），用记事本打开填入两个字段：
+
+```json
+{
+  "api_key": "第 1 步拿到的 64 位 Key",
+  "proxy": "http://127.0.0.1:7890"
+}
+```
+
+- `api_key`：必填，你的 VirusTotal Key
+- `proxy`：**国内网络通常必须填**（virustotal.com 在大陆被墙，需指向本机代理软件的 HTTP 端口，Clash 默认 `http://127.0.0.1:7890`、v2rayN 默认 `http://127.0.0.1:10809`）；海外设备留空 `""`
+
+**方式 B：环境变量**
+
+```
+setx VT_API_KEY "你的64位Key"
+```
+
+（重开终端生效；优先级高于配置文件。代理仍建议在 `vt_config.json` 里配。）
+
+### 第 3 步：验证
+
+```
+MiniAV.exe vt C:\Windows\System32\notepad.exe
+```
+
+输出 `harmless: xx / malicious: 0` 之类统计即配置成功；报「未配置联网扫描」说明 Key 没填对，报「VT 网络错误」说明代理没配对。
+
+> Key 请妥善保管：它等同你的 VT 账号身份，不要提交到公开仓库或发给他人。上传扫描（`--upload`）会把文件公开共享给 VT 多引擎，上限 32MB，涉密样本勿传。
 
 ## 目录结构
 
