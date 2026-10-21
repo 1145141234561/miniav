@@ -20308,15 +20308,6 @@ rule IsPE32 : PECheck
 		uint16(uint32(0x3C)+0x18) == 0x010B
 }
 
-rule IsPE64 : PECheck
-{
-	condition:
-		// MZ signature at offset 0 and ...
-		uint16(0) == 0x5A4D and
-		// ... PE signature at offset stored in MZ header at 0x3C
-		uint16(uint32(0x3C)+0x18) == 0x020B
-}
-
 rule IsNET_EXE : PECheck
 {
 	condition:
@@ -20339,15 +20330,6 @@ rule IsDLL : PECheck
 
 }
 
-rule IsConsole : PECheck
-{
-	condition:
-		// MZ signature at offset 0 and ...
-		uint16(0) == 0x5A4D and
-		// ... PE signature at offset stored in MZ header at 0x3C
-		uint16(uint32(0x3C)+0x5C) == 0x0003
-}
-
 rule IsWindowsGUI : PECheck
 {
 	condition:
@@ -20355,36 +20337,6 @@ rule IsWindowsGUI : PECheck
 		uint16(0) == 0x5A4D and
 		// ... PE signature at offset stored in MZ header at 0x3C
 		uint16(uint32(0x3C)+0x5C) == 0x0002
-}
-
-rule IsPacked : PECheck
-{
-	meta: 
-		description = "Entropy Check"
-	condition:
-		// MZ signature at offset 0 and ...
-		uint16(0) == 0x5A4D and
-		// ... PE signature at offset stored in MZ header at 0x3C
-		uint32(uint32(0x3C)) == 0x00004550 and
-		math.entropy(0, filesize) >= 7.0
-}
-
-
-rule HasOverlay : PECheck
-{
-	meta: 
-		author="_pusher_"
-		description = "Overlay Check"
-	condition:
-		// MZ signature at offset 0 and ...
-		uint16(0) == 0x5A4D and
-		// ... PE signature at offset stored in MZ header at 0x3C
-		uint32(uint32(0x3C)) == 0x00004550 and
-		//stupid check if last section is 0		
-		//not (pe.sections[pe.number_of_sections-1].raw_data_offset+pe.sections[pe.number_of_sections-1].raw_data_size) == 0x0 and
-
-		(pe.sections[pe.number_of_sections-1].raw_data_offset+pe.sections[pe.number_of_sections-1].raw_data_size) < filesize
-		
 }
 
 rule HasTaggantSignature : PECheck
@@ -20410,47 +20362,6 @@ rule HasTaggantSignature : PECheck
 		$a0
 }
 
-
-rule HasDigitalSignature : PECheck
-{
-	meta: 
-		author="_pusher_"
-		description = "DigitalSignature Check"
-		date="2016-07"
-	strings:		
-		//size check is wildcarded
-		$a0 = { ?? ?? ?? ?? 00 02 02 00 30 82 ?? ?? 06 09 2A 86 48 86 F7 0D 01 07 02 A0 82 ?? ?? 30 82 ?? ?? 02 01 01 31 0B 30 09 06 05 2B 0E 03 02 1A 05 00 30 68 06 0A 2B 06 01 04 01 82 37 02 01 04 A0 5A 30 58 30 33 06 0A 2B 06 01 04 01 82 37 02 01 0F 30 25 03 01 00 A0 20 A2 1E 80 1C 00 3C 00 3C 00 3C 00 4F 00 62 00 73 00 6F 00 6C 00 65 00 74 00 65 00 3E 00 3E 00 3E 30 21 30 09 06 05 2B 0E 03 02 1A 05 00 04 14 }
-		$a1 = { ?? ?? ?? ?? 00 02 02 00 30 82 ?? ?? 06 09 2A 86 48 86 F7 0D 01 07 02 A0 82 ?? ?? 30 82 ?? ?? 02 01 01 31 0B 30 09 06 05 2B 0E 03 02 1A 05 00 30 ?? 06 0A 2B 06 01 04 01 82 37 02 01 04 A0 ?? 30 ?? 30 ?? 06 0A 2B 06 01 04 01 82 37 02 01 0F 30 ?? 03 01 00 A0 ?? A2 ?? 80 00 30 21 30 09 06 05 2B 0E 03 02 1A 05 00 04 14 }
-		$a2 = { ?? ?? ?? ?? 00 02 02 00 30 82 ?? ?? 06 09 2A 86 48 86 F7 0D 01 07 02 A0 82 ?? ?? 30 82 ?? ?? 02 01 01 31 0E 30 ?? 06 ?? ?? 86 48 86 F7 0D 02 05 05 00 30 67 06 0A 2B 06 01 04 01 82 37 02 01 04 A0 59 30 57 30 33 06 0A 2B 06 01 04 01 82 37 02 01 0F 30 25 03 01 00 A0 20 A2 1E 80 1C 00 3C 00 3C 00 3C 00 4F 00 62 00 73 00 6F 00 6C 00 65 00 74 00 65 00 3E 00 3E 00 3E 30 20 30 0C 06 08 2A 86 48 86 F7 0D 02 05 05 00 04 }
-		$a3 = { ?? ?? ?? ?? 00 02 02 00 30 82 ?? ?? 06 09 2A 86 48 86 F7 0D 01 07 02 A0 82 ?? ?? 30 82 ?? ?? 02 01 01 31 0F 30 ?? 06 ?? ?? 86 48 01 65 03 04 02 01 05 00 30 78 06 0A 2B 06 01 04 01 82 37 02 01 04 A0 6A 30 68 30 33 06 0A 2B 06 01 04 01 82 37 02 01 0F 30 25 03 01 00 A0 20 A2 1E 80 1C 00 3C 00 3C 00 3C 00 4F 00 62 00 73 00 6F 00 6C 00 65 00 74 00 65 00 3E 00 3E 00 3E 30 31 30 0D 06 09 60 86 48 01 65 03 04 02 01 05 00 04 }
-	condition:
-		// MZ signature at offset 0 and ...
-		uint16(0) == 0x5A4D and
-		// ... PE signature at offset stored in MZ header at 0x3C
-		uint32(uint32(0x3C)) == 0x00004550 and
-		(for any of ($a*) : ($ in ( (pe.sections[pe.number_of_sections-1].raw_data_offset+pe.sections[pe.number_of_sections-1].raw_data_size)..filesize)) )
-		//its not always like this:
-		//and  uint32(@a0) == (filesize-(pe.sections[pe.number_of_sections-1].raw_data_offset+pe.sections[pe.number_of_sections-1].raw_data_size))
-}
-
-rule HasDebugData : PECheck
-{
-	meta: 
-		author = "_pusher_"
-		description = "DebugData Check"
-		date="2016-07"
-	condition:
-		// MZ signature at offset 0 and ...
-		uint16(0) == 0x5A4D and
-		// ... PE signature at offset stored in MZ header at 0x3C
-		uint32(uint32(0x3C)) == 0x00004550 and
-		//orginal
-		//((uint32(uint32(0x3C)+0xA8) >0x0) and (uint32be(uint32(0x3C)+0xAC) >0x0))
-		//((uint16(uint32(0x3C)+0x18) & 0x200) >> 5) x64/x32
-		(IsPE32 or IsPE64) and
-		((uint32(uint32(0x3C)+0xA8+((uint16(uint32(0x3C)+0x18) & 0x200) >> 5)) >0x0) and (uint32be(uint32(0x3C)+0xAC+((uint16(uint32(0x3C)+0x18) & 0x200) >> 5)) >0x0))
-}
-
 rule IsBeyondImageSize : PECheck
 {
 	meta: 
@@ -20467,73 +20378,6 @@ rule IsBeyondImageSize : PECheck
 		(pe.sections[i].virtual_address+pe.sections[i].virtual_size) > (uint32(uint32(0x3C)+0x50)) or
 		(pe.sections[i].raw_data_offset+pe.sections[i].raw_data_size) > filesize
 		)
-}
-
-rule ImportTableIsBad : PECheck
-{
-	meta: 
-		author = "_pusher_ & mrexodia"
-		date = "2016-07"
-		description = "ImportTable Check"
-	condition:
-		// MZ signature at offset 0 and ...
-		uint16(0) == 0x5A4D and
-		// ... PE signature at offset stored in MZ header at 0x3C
-		uint32(uint32(0x3C)) == 0x00004550 and
-		(IsPE32 or IsPE64) and
-		( 		//Import_Table_RVA+Import_Data_Size .. cannot be outside imagesize
-		((uint32(uint32(0x3C)+0x80+((uint16(uint32(0x3C)+0x18) & 0x200) >> 5) )) + (uint32(uint32(0x3C)+0x84+((uint16(uint32(0x3C)+0x18) & 0x200) >> 5))))     > (uint32(uint32(0x3C)+0x50)) 
-		or
-		(((uint32(uint32(0x3C)+0x80+((uint16(uint32(0x3C)+0x18) & 0x200) >> 5) )) + (uint32(uint32(0x3C)+0x84+((uint16(uint32(0x3C)+0x18) & 0x200) >> 5))))  == 0x0)
-		//or
-
-		//doest work
-		//pe.imports("", "")
-
-		//need to check if this is ok.. 15:06 2016-08-12
-		//uint32( uint32(uint32(0x3C)+0x80+((uint16(uint32(0x3C)+0x18) & 0x200) >> 5))+uint32(uint32(0x3C)+0x34)) == 0x408000
-		//this works.. 
-		//uint32(uint32(0x3C)+0x80+((uint16(uint32(0x3C)+0x18) & 0x200) >> 5))+uint32(uint32(0x3C)+0x34) == 0x408000
-		
-		//uint32be(uint32be(0x409000)) == 0x005A
-		//pe.image_base
-		//correct:
-
-		//uint32(uint32(0x3C)+0x80)+pe.image_base == 0x408000
-
-		//this works (file offset):
-		//$a0 at 0x4000
-		//this does not work rva:
-		//$a0 at uint32(0x0408000)
-
-		//(uint32(uint32(uint32(0x3C)+0x80)+((uint16(uint32(0x3C)+0x18) & 0x200) >> 5))+pe.image_base) == 0x0)
-
-		or
-		//tiny PE files..
-		(uint32(0x3C)+0x80+((uint16(uint32(0x3C)+0x18) & 0x200) >> 5) > filesize)
-
-		//or
-		//uint32(uint32(0x3C)+0x80) == 0x21000
-   		//uint32(uint32(uint32(0x3C)+0x80)) == 0x0
-		//pe.imports("", "")
-		)				
-}
-
-rule ExportTableIsBad : PECheck
-{
-	meta: 
-		author = "_pusher_ & mrexodia"
-		date = "2016-07"
-		description = "ExportTable Check"
-	condition:
-		// MZ signature at offset 0 and ...
-		uint16(0) == 0x5A4D and
-		// ... PE signature at offset stored in MZ header at 0x3C
-		uint32(uint32(0x3C)) == 0x00004550 and
-		(IsPE32 or IsPE64) and
-		( 		//Export_Table_RVA+Export_Data_Size .. cannot be outside imagesize
-		((uint32(uint32(0x3C)+0x78+((uint16(uint32(0x3C)+0x18) & 0x200) >> 5) )) + (uint32(uint32(0x3C)+0x7C+((uint16(uint32(0x3C)+0x18) & 0x200) >> 5))))     > (uint32(uint32(0x3C)+0x50)) 
-		)		
 }
 
 
@@ -20554,22 +20398,6 @@ rule HasModified_DOS_Message : PECheck
 		uint16(0) == 0x5A4D and
 		// ... PE signature at offset stored in MZ header at 0x3C
 		uint32(uint32(0x3C)) == 0x00004550 and not
-		(for any of ($a*) : ($ in (0x0..uint32(0x3c) )))
-}
-
-rule HasRichSignature : PECheck
-{
-	meta: 
-		author = "_pusher_"
-		description = "Rich Signature Check"
-		date="2016-07"
-	strings:	
-		$a0 = "Rich" ascii
-	condition:
-		// MZ signature at offset 0 and ...
-		uint16(0) == 0x5A4D and
-		// ... PE signature at offset stored in MZ header at 0x3C
-		uint32(uint32(0x3C)) == 0x00004550 and
 		(for any of ($a*) : ($ in (0x0..uint32(0x3c) )))
 }
 
@@ -79042,17 +78870,6 @@ rule DOS4GW_Extender_by_Tenberry_Software: PEiD
 
 }
 
-rule Microsoft_Visual_Cpp_80: PEiD
-{
-    strings:
-        $a = { 83 3D ?? ?? ?? ?? 00 74 1A 68 ?? ?? ?? ?? E8 ?? ?? ?? ?? 85 C0 59 74 0B FF 74 24 04 FF 15 ?? ?? ?? ?? 59 E8 ?? ?? ?? ?? 68 ?? ?? ?? ?? 68 ?? ?? ?? ?? E8 ?? ?? ?? ?? 85 C0 59 59 75 54 56 57 68 ?? ?? ?? ?? E8 ?? ?? ?? ?? BE ?? ?? ?? ?? 8B C6 BF }
-        $b = { 83 3D ?? ?? ?? ?? 00 74 1A 68 ?? ?? ?? ?? E8 ?? ?? ?? ?? 85 C0 59 74 0B FF 74 24 04 FF 15 ?? ?? ?? ?? 59 E8 ?? ?? ?? ?? 68 ?? ?? ?? ?? 68 ?? ?? ?? ?? E8 ?? ?? ?? ?? 85 C0 59 59 75 54 56 57 68 ?? ?? ?? ?? E8 ?? ?? ?? ?? BE ?? ?? ?? ?? 8B C6 BF ?? ?? ?? ?? 3B C7 59 73 0F 8B 06 85 C0 74 02 FF D0 83 C6 04 3B F7 72 F1 }
-        $c = { 48 83 EC 28 E8 ?? ?? 00 00 48 83 C4 28 E9 ?? ?? FF FF CC CC CC CC CC CC CC CC CC CC CC CC CC CC }
-    condition:
-        for any of ($*) : ( $ at pe.entry_point )
-
-}
-
 rule MSLRH_v032a_fake_PEBundle_20x_24x_emadicius_h: PEiD
 {
     strings:
@@ -90157,16 +89974,6 @@ rule ACProtect_V20X_RiSco: PEiD
         $a = { 68 ?? ?? ?? ?? 68 ?? ?? ?? ?? C3 C3 }
     condition:
         $a at pe.entry_point
-
-}
-
-rule Microsoft_Visual_Cpp_80_DLL: PEiD
-{
-    strings:
-        $a = { 48 83 EC 28 83 FA 01 48 89 5C 24 38 48 89 74 24 40 48 89 7C 24 48 ?? ?? ?? 8B ?? ?? 8B ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? 48 }
-        $b = { 48 83 EC 28 }
-    condition:
-        for any of ($*) : ( $ at pe.entry_point )
 
 }
 
