@@ -85,6 +85,34 @@
       "b0d12dd7642e5ed3385341bd7b227e3b502754e2c5964eb48aaf2e48781f8676": {
         "name": "Storm1-VBS-Worm",
         "level": "high"
+      },
+      "e809da86bd81463347fa7f922d3e088755a94a331889d32acb55aa8f57778a34": {
+        "name": "Antino-UAT11587-HTA-Stager",
+        "level": "high"
+      },
+      "e6ff096a0562c0042b09d250bd60272ffcd8d72bd95c563842acf765a8dc8bcf": {
+        "name": "Antino-UAT11587-HTA-Stager",
+        "level": "high"
+      },
+      "4d0fdce4c098635fe9b296c3a82c74645f9885eb5e383aa44a0fe7e50da3ca3f": {
+        "name": "Antino-UAT11587-HTA-Stager",
+        "level": "high"
+      },
+      "d753a615aedf8e58ffc75b2b7ebd320c0cbe6bcb5cbb885db749a2a85c55d3bf": {
+        "name": "Antino-UAT11587-TestAssembly-Dll",
+        "level": "high"
+      },
+      "1fadc90b61ce536abda78eb387a7f3d745f00c16775d3f762845ccc0fde567da": {
+        "name": "Antino-UAT11587-Slc-Dll-Gen1",
+        "level": "high"
+      },
+      "09ef7c736bccfafefc44d9910d499173b88063b73b221fc0dc9e9105107e5cff": {
+        "name": "Antino-UAT11587-Slc-Dll-Gen2",
+        "level": "high"
+      },
+      "0c39264337a1186b2e765e24073399cbdcba118306614eb411e315887af578bd": {
+        "name": "Antino-UAT11587-Fake-Installer-Gen2",
+        "level": "high"
       }
     },
     "md5": {
@@ -202,6 +230,24 @@
       "type": "regex",
       "data": "instapp\\.s\\.\\d+\\.\\d+",
       "name": "SilverFox-InstApp-Template-Name",
+      "level": "high"
+    },
+    {
+      "type": "regex",
+      "data": "(^|\\.)(mlcro\\.net|mlcrosoft\\.(vip|me))",
+      "name": "SilverFox-Mlcro-Domain",
+      "level": "high"
+    },
+    {
+      "type": "regex",
+      "data": "\\b(104\\.21\\.3\\.223|172\\.67\\.153\\.160|104\\.21\\.71\\.30|172\\.67\\.142\\.197|122\\.10\\.85\\.4|103\\.97\\.3\\.19|198\\.44\\.185\\.131|39\\.109\\.122\\.128|177\\.4\\.3\\.107|177\\.4\\.3\\.104)\\b",
+      "name": "SilverFox-C2-IP-Set",
+      "level": "high"
+    },
+    {
+      "type": "regex",
+      "data": "(^|\\.)(microsoft-flash\\.com|wps-cn\\.com|osc-cdn\\.com)",
+      "name": "Antino-Fake-Installer-Domain",
       "level": "high"
     }
   ],
