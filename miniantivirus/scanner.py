@@ -43,6 +43,11 @@ _HEX_RUN = re.compile(rb"[0-9a-fA-F]{32768,}")
 
 _RULES_CACHE = {}
 
+# 解混淆层跳过的扩展名：编译产物字节码（Qt QML/JS、Python、Java）二进制
+# 布局天然含编码字符串表；.qml 源文件内嵌 base64 资源 URI 会触发嵌套编码
+# 低危报告（真实案例：游戏 Qt 目录 663 条 Obfuscated-Content 误报）
+_DEOBF_SKIP_EXTS = {".qmlc", ".jsc", ".pyc", ".pyo", ".class", ".qml"}
+
 CACHE_FILE = Path(__file__).resolve().parent.parent / "scan_cache.json"
 _CACHE = {"fp": None, "files": {}, "dirty": False}
 _CACHE_STATS = {"hits": 0}
@@ -183,8 +188,11 @@ class ScanContext:
             compiled = _RULES_CACHE.get(key)
             if compiled is None:
                 try:
-                    compiled = yara.compile(filepaths={
-                        str(i): p for i, p in enumerate(self.rules_paths)})
+                    compiled = yara.compile(
+                        filepaths={str(i): p for i, p in enumerate(self.rules_paths)},
+                        # 上游规则（如 Neo23x0 signature-base）常引用 filename/filepath
+                        # 外部变量，不给默认值会导致整库编译失败、全部规则被丢弃
+                        externals={"filename": "", "filepath": ""})
                 except yara.Error as exc:
                     print(f"[!] YARA 规则编译失败，本次忽略规则: {exc}")
                     compiled = False
@@ -552,7 +560,9 @@ def scan_file(path, db, ctx=None):
     except Exception as exc:
         findings.append({"name": "PyInst-Error", "level": "low",
                          "detail": f"PyInstaller 结构解析异常（已跳过）: {exc}"})
-    if ctx.deobf and not findings:
+    # 编译产物/声明式 UI 资源（见 _DEOBF_SKIP_EXTS）跳过解混淆层
+    if (ctx.deobf and not findings
+            and path.suffix.lower() not in _DEOBF_SKIP_EXTS):
         try:
             findings += deobf_findings(data, db, ctx)
         except Exception as exc:

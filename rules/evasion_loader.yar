@@ -9,6 +9,19 @@
 // 十六进制导出工具（xxd/hexdump 输出）含少量 \xNN 转义。
 // 规则文本刻意用正则形式书写关键字符串，避免匹配规则文件自身。
 
+// 媒体/图片容器魔数：游戏 skin 资源包内 PNG 常携带 GUID 元数据文本，
+// 会把 fuscation 规则的非 PE 密度分支打爆（真实案例：单目录 179 条误报）；
+// 媒体容器是纯数据载体，编码数组伪装在其中不具备可执行语义
+private rule _Media_Container {
+    condition:
+        uint32(0) == 0x474E5089          // PNG
+        or uint16(0) == 0xD8FF           // JPEG
+        or uint32(0) == 0x38464947       // GIF8
+        or uint16(0) == 0x4D42           // BMP
+        or (uint32(0) == 0x46464952      // RIFF 容器（WEBP/WAV）
+            and uint32(8) == 0x45504957)
+}
+
 rule Evasion_UUID_Shellcode {
     meta:
         description = "Shellcode 伪装为 UUID 数组（UUIDfuscation，免杀 Loader 常用）"
@@ -19,8 +32,10 @@ rule Evasion_UUID_Shellcode {
         $c2 = "UuidToString" ascii nocase
     condition:
         // 脚本/文本：数组占满文件或转换 API 伴生即报；
-        // PE：游戏/框架天然含大量 GUID 与 Uuid* 导入，要求数组密度占主导
+        // PE：游戏/框架天然含大量 GUID 与 Uuid* 导入，要求数组密度占主导；
+        // 媒体容器（PNG/JPEG/GIF/BMP/WEBP）整类跳过——资源 GUID 文本误报源
         (not uint16(0) == 0x5A4D
+            and not _Media_Container
             and (#uuid * 1024 > filesize or (any of ($c*) and #uuid > 4)))
         or (uint16(0) == 0x5A4D and #uuid > 50 and #uuid * 512 > filesize)
 }
@@ -35,6 +50,7 @@ rule Evasion_IPfuscation {
         $c2 = "inet_addr" ascii nocase
     condition:
         (not uint16(0) == 0x5A4D
+            and not _Media_Container
             and (#ip > 40 or (any of ($c*) and #ip > 12)))
         or (uint16(0) == 0x5A4D and #ip > 200 and #ip * 16 > filesize)
 }
@@ -136,6 +152,7 @@ rule Evasion_IPv6fuscation {
         $c1 = /RtlIpv6\s*StringToAddress/ nocase
     condition:
         (not uint16(0) == 0x5A4D
+            and not _Media_Container
             and (#ip6 > 40 or (any of ($c*) and #ip6 > 4)))
         or (uint16(0) == 0x5A4D and #ip6 > 200 and #ip6 * 22 > filesize)
 }
